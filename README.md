@@ -21,14 +21,16 @@
 
 ## 🖼️ הדגמה חזותית
 
-**עיצוב משופר ו-RTL, **
-![עיצוב משופר ו-RTL, סרגל צד לניווט וכפתור העתקה]((https://raw.githubusercontent.com/Y-PLONI/ChatGPT-Enhancer/main/Screenshot_1.png))
+**עיצוב משופר, RTL, סרגל צד לניווט וכפתור העתקה:**
+![עיצוב משופר, RTL, סרגל צד לניווט וכפתור העתקה](https://raw.githubusercontent.com/Y-PLONI/ChatGPT-Enhancer/main/Screenshot_1.png)
 
+*(אפשר להוסיף כאן תמונה נוספת אם רוצים, למשל, להתמקד רק בסרגל הצד או רק בעיצוב הבועות)*
+<!-- ![סרגל צד לניווט בפעולה](https://via.placeholder.com/600x300.png?text=צילום+מסך+של+סרגל+הצד+בלבד) -->
 
 **חלונית הגדרות:**
-![חלונית הגדרות]((https://raw.githubusercontent.com/Y-PLONI/ChatGPT-Enhancer/main/Screenshot_2.png))
----
+![חלונית הגדרות](https://raw.githubusercontent.com/Y-PLONI/ChatGPT-Enhancer/main/Screenshot_2.png)
 
+---
 ## 📦 מדריך התקנה
 
 א.  **התקנת מנהל סקריפטים (Userscript Manager):**
