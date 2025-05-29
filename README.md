@@ -42,7 +42,7 @@
     לחצו על הקישור הישיר הבא להתקנת הסקריפט:
     *   ⬅️ **[התקנת הסקריפט ChatGPT-Enhancer](https://raw.githubusercontent.com/Y-PLONI/ChatGPT-Enhancer/main/ChatGPT-Enhancer.user.js)**
 
-    מנהל הסקריפטים שלכם ייפתח ויבקש מכם לאשר את ההתקנה.
+מנהל הסקריפטים שלכם ייפתח ויבקש מכם לאשר את ההתקנה.
 
 ---
 
