@@ -1,6 +1,6 @@
 #  ✨ משפר חווית ChatGPT
 
-[![Userscript Version](https://img.shields.io/badge/version-3.1.3-blue.svg)](https://raw.githubusercontent.com/Y-PLONI/ChatGPT-Enhancer/main/SCRIPT.user.js)
+[![Userscript Version](https://img.shields.io/badge/version-3.1.3-blue.svg)](https://raw.githubusercontent.com/Y-PLONI/ChatGPT-Enhancer/main/ChatGPT-Enhancer.user.js)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **משפר ChatGPT** הוא Userscript (סקריפט משתמש) מקיף עבור Violentmonkey/Tampermonkey, שנועד לשפר משמעותית את חווית השימוש שלכם ב-ChatGPT. הסקריפט מוסיף מגוון שיפורי ממשק וכלים שימושיים, כולל סרגל צד לניווט בשיחה, עיצוב צ'אט משופר, תמיכה מלאה בכתיבה מימין לשמאל (RTL) ובמיוחד בעברית, כפתור להעתקת השיחה בלחיצה אחת, ועוד – הכל ניתן להתאמה אישית דרך חלונית הגדרות ייעודית.
@@ -36,15 +36,14 @@
 
 ## 📦 מדריך התקנה
 
-1.  **התקנת מנהל סקריפטים (Userscript Manager):**
+א.  **התקנת מנהל סקריפטים (Userscript Manager):**
     אם עדיין אין לכם, התקינו תוסף לדפדפן מסוג מנהל סקריפטים. האפשרויות המומלצות הן:
     א   [Violentmonkey](https://violentmonkey.github.io/get-it/) (מומלץ, קוד פתוח)
     ב   [Tampermonkey](https://www.tampermonkey.net/)
 
-2.  **התקנת ChatGPT-Enhancer:**
+ב.  **התקנת ChatGPT-Enhancer:**
     לחצו על הקישור הישיר הבא להתקנת הסקריפט:
-    *   ⬅️ **[התקנת הסקריפט ChatGPT-Enhancer](https://raw.githubusercontent.com/Y-PLONI/ChatGPT-Enhancer/main/SCRIPT.user.js)**
-    *(זכרו להחליף את `Y-PLONI` בשם המשתמש שלכם ב-GitHub ואת `SCRIPT.user.js` בשם הקובץ הנכון של הסקריפט שלכם אם הוא שונה)*
+    *   ⬅️ **[התקנת הסקריפט ChatGPT-Enhancer](https://raw.githubusercontent.com/Y-PLONI/ChatGPT-Enhancer/main/ChatGPT-Enhancer.user.js**
 
     מנהל הסקריפטים שלכם ייפתח ויבקש מכם לאשר את ההתקנה.
 
@@ -75,7 +74,6 @@
 הסקריפט כתוב ב-JavaScript ומשתמש ב-jQuery למניפולציה של ה-DOM. הקוד מאורגן כך שינהל תכונות שונות ביעילות.
 
 אתם מוזמנים לבצע Fork למאגר זה, לבצע שיפורים ולהגיש Pull Requests! אם נתקלתם בבאגים או שיש לכם הצעות לתכונות, אנא [פתחו Issue](https://github.com/Y-PLONI/ChatGPT-Enhancer/issues).
-*(החליפו את `Y-PLONI` בשם המשתמש שלכם ב-GitHub)*
 
 ---
 
@@ -83,8 +81,9 @@
 
 פרויקט זה מופץ תחת רישיון MIT. עיינו בקובץ [LICENSE.md](LICENSE.md) לפרטים נוספים (ניתן גם פשוט לציין "פרויקט זה תחת רישיון MIT").
 
-זכויות יוצרים (c) 2023 Y-PLONI
-*(החליפו את Y-PLONI בשמכם/שם המשתמש שלכם ב-GitHub)*
+זכויות יוצרים (c) 2025 Y-PLONI
+
+*תודה מיוחדת לgemini ש'טרח' לכתוב לי את כל הטקסט שלפניכם...*
 
 ---
 
