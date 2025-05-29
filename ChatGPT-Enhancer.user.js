@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         כלי עזר משולבים וסרגל צד ל-ChatGPT (עם הגדרות v3.1.3 - אופטימיזציות מתקדמות)
+// @name         כלי עזר משולבים וסרגל צד ל-ChatGPT (עם הגדרות v3.1.6 - סרגל דינמי)
 // @namespace    http://tampermonkey.net/
-// @version      3.1.3
-// @description  משלב עיצוב בועות, RTL, העתקה, הסתרת "תוכניות", וסרגל צד Timeline, עם התאמה אישית ואופטימיזציות ביצועים מתקדמות.
+// @version      3.1.6
+// @description  משלב עיצוב בועות, RTL, העתקה, הסתרת "תוכניות", וסרגל צד Timeline דינמי, עם התאמה אישית, אופטימיזציות, ותמיכה במצב כהה.
 // @author       Y-PLONI
 // @match        *://chatgpt.com/*
 // @match        *://chat.openai.com/*
@@ -14,21 +14,20 @@
 // @grant        GM_log
 // @grant        GM_notification
 // @run-at       document-idle
-// @require      https://code.jquery.com/jquery-3.7.1.slim.min.js
-// @updateURL    https://raw.githubusercontent.com/Y-PLONI/SCRIPT1/main/SCRIPT.user.js // קישור לקובץ הגולמי לבדיקת עדכונים
-// @downloadURL  https://raw.githubusercontent.com/Y-PLONI/SCRIPT1/main/SCRIPT.user.js // קישור לקובץ הגולמי להורדת העדכון
-
+// @require      https://code.jquery.com/jquery-3.7.1.min.js
+// @updateURL    https://raw.githubusercontent.com/Y-PLONI/SCRIPT1/main/SCRIPT.user.js
+// @downloadURL  https://raw.githubusercontent.com/Y-PLONI/SCRIPT1/main/SCRIPT.user.js
 // ==/UserScript==
 
 (function() {
     'use strict';
 
-    const DEBUG = false; // DEBUG Global for all features
+    const DEBUG = false;
     const debugLog = DEBUG ? (...args) => console.log('[CGPT Script]', ...args) : () => {};
     const debugWarn = DEBUG ? (...args) => console.warn('[CGPT Script]', ...args) : () => {};
     const debugError = DEBUG ? (...args) => console.error('[CGPT Script]', ...args) : () => {};
 
-    debugLog('ChatGPT Combined Utilities & Timeline Script v3.1.3 - Started');
+    debugLog('ChatGPT Combined Utilities & Timeline Script v3.1.6 - Started');
 
     // --- START: Settings and General Utilities ---
     const SETTINGS_KEYS = {
@@ -38,17 +37,13 @@
         enableTimelineSidebar: 'chatgpt_utils_enableTimelineSidebar_v1'
     };
     let currentSettings = {};
-    let pageVisible = true; // For pausing observers when tab is hidden
+    let pageVisible = !document.hidden;
 
     function debounce(func, wait) {
         let timeout;
         return function executedFunction(...args) {
-            const later = () => {
-                clearTimeout(timeout);
-                func(...args);
-            };
-            clearTimeout(timeout);
-            timeout = setTimeout(later, wait);
+            const later = () => { clearTimeout(timeout); func(...args); };
+            clearTimeout(timeout); timeout = setTimeout(later, wait);
         };
     }
 
@@ -72,15 +67,12 @@
         currentSettings.enableTimelineSidebar = GM_getValue(SETTINGS_KEYS.enableTimelineSidebar, true);
         debugLog('CombinedScript - Loaded settings:', currentSettings);
     }
-    // --- END: Settings and General Utilities ---
 
-    // --- START: Combined Utilities Feature - Bubble Styling, RTL, Copy, Hide Plans ---
     const userMessageContainerSelector = 'div[data-message-author-role="user"][data-message-id]';
     const userMessageBubbleSelector = 'div[data-message-author-role="user"] div[class*="rounded-3xl"]';
     const userTextContentSelector = 'div[data-message-author-role="user"] .whitespace-pre-wrap';
     const userMessageFlexContainerSelector = 'div[data-message-author-role="user"].text-message';
     const aiMessageContainerSelector = 'div[data-message-author-role="assistant"][data-message-id]';
-    // const userBackgroundColor = '#F4FFF7'; // No longer needed here, moved to CSS variables
     const aiPadding = '10px 15px';
     const aiBorderRadius = '1.5rem';
     const aiMarginBottom = '15px';
@@ -102,36 +94,51 @@
     let hidePlansObserver = null;
     let hidePlansAttempts = 0;
 
+    function isDarkModeActive() {
+        return document.documentElement.classList.contains('dark');
+    }
+
     function applyStylesOnLoad() {
         const STYLE_ID_STYLING = STYLE_ID_BASE + 'styling';
         const STYLE_ID_COPY    = STYLE_ID_BASE + 'copy';
-        let cssStyling = "", cssCopy = "";
+        const STYLE_ID_SETTINGS_DARK_MODE = STYLE_ID_BASE + 'settings-dark';
+
+        let cssStyling = "", cssCopy = "", cssSettingsDark = "";
+        const isDarkMode = isDarkModeActive();
+        debugLog('Applying styles. Dark mode active:', isDarkMode);
 
         if (currentSettings.enableStyling) {
             cssStyling += `
                 :root{
-                    --cgpt-user-bubble: #F4FFF7;
-                    --cgpt-user-stripe: #A5D6A7;
-                    --cgpt-ai-bubble: #E3F2FD;
-                    --cgpt-ai-border: #BBDEFB;
-                    --cgpt-ai-stripe: #64B5F6;
+                    --cgpt-user-bubble-bg: ${isDarkMode ? '#3A3F47' : '#F4FFF7'};
+                    --cgpt-user-bubble-text: ${isDarkMode ? '#E0E0E0' : 'inherit'};
+                    --cgpt-user-stripe: ${isDarkMode ? '#508D50' : '#A5D6A7'};
+                    --cgpt-ai-bubble-bg: ${isDarkMode ? '#2C3035' : '#E3F2FD'};
+                    --cgpt-ai-bubble-text: ${isDarkMode ? '#E0E0E0' : 'inherit'};
+                    --cgpt-ai-border: ${isDarkMode ? '#454A50' : '#BBDEFB'};
+                    --cgpt-ai-stripe: ${isDarkMode ? '#4A7ABE' : '#64B5F6'};
                 }
                 ${userMessageContainerSelector} { direction: rtl !important; }
                 ${userMessageFlexContainerSelector} { align-items: flex-start !important; }
                 ${userTextContentSelector} { text-align: right !important; }
                 ${userMessageBubbleSelector} {
-                    background-color: var(--cgpt-user-bubble) !important;
+                    background-color: var(--cgpt-user-bubble-bg) !important;
+                    color: var(--cgpt-user-bubble-text) !important;
                     padding: 10px 15px !important;
                     border-right: 4px solid var(--cgpt-user-stripe) !important;
                 }
                 ${aiMessageContainerSelector} {
-                    background-color: var(--cgpt-ai-bubble) !important; /* כחול בהיר מאוד */
+                    background-color: var(--cgpt-ai-bubble-bg) !important;
+                    color: var(--cgpt-ai-bubble-text) !important;
                     padding: ${aiPadding} !important;
                     border-radius: ${aiBorderRadius} !important;
                     margin-bottom: ${aiMarginBottom} !important;
                     margin-top: ${aiMarginTop} !important;
-                    border: 1px solid var(--cgpt-ai-border) !important; /* גבול כחול מעט יותר כהה */
-                    border-left: 4px solid var(--cgpt-ai-stripe) !important; /* פס כחול בצד, מעט יותר כהה מהרקע */
+                    border: 1px solid var(--cgpt-ai-border) !important;
+                    border-left: 4px solid var(--cgpt-ai-stripe) !important;
+                }
+                ${aiMessageContainerSelector} .markdown.prose, ${aiMessageContainerSelector} .text-token-text-primary {
+                     color: var(--cgpt-ai-bubble-text) !important;
                 }
                 ${aiMessageContainerSelector} > div:first-child { padding-top: 0 !important; }
             `;
@@ -142,25 +149,36 @@
                 #copy-chatgpt-conversation {
                     display: flex; align-items: center; justify-content: center; height: 36px; min-width: 36px;
                     padding: 0 8px; margin-inline-end: 8px;
-                    background-color: #FFFFFF !important; /* רקע לבן */
-                    color: #343A40 !important; /* צבע טקסט/אייקון כהה */
+                    background-color: ${isDarkMode ? '#4A4D4F' : '#FFFFFF'} !important;
+                    color: ${isDarkMode ? '#E0E0E0' : '#343A40'} !important;
                     font-size: 18px; line-height: 1;
-                    border: 1px solid #DEE2E6 !important; /* גבול אפור בהיר */
+                    border: 1px solid ${isDarkMode ? '#6A6D6F' : '#DEE2E6'} !important;
                     border-radius: 6px; cursor: pointer;
-                    user-select: none; order: -1; /* order: -1 ממקם אותו ראשון בקונטיינר */
-                    font-family: inherit; /* ירושה של פונט */
+                    user-select: none; order: -1;
+                    font-family: inherit;
                 }
                 #copy-chatgpt-conversation:hover {
-                    background-color: #F8F9FA !important; /* רקע מעט אפרפר ב-hover */
-                    border-color: #CED4DA !important; /* גבול מעט כהה יותר ב-hover */
-                    opacity: 1;
+                    background-color: ${isDarkMode ? '#5A5D5F' : '#F8F9FA'} !important;
+                    border-color: ${isDarkMode ? '#7A7D7F' : '#CED4DA'} !important;
                 }
             `;
         }
 
+        cssSettingsDark = `
+            #chatgpt-userscript-settings-dialog.cgpt-settings-dark {
+                background-color: #282A2E !important; color: #EAEAEA !important; border-color: #404246 !important;
+            }
+            #chatgpt-userscript-settings-dialog.cgpt-settings-dark h3 { color: #F0F0F0 !important; border-bottom-color: #404246 !important; }
+            #chatgpt-userscript-settings-dialog.cgpt-settings-dark label { color: #D8D8D8 !important; }
+            #chatgpt-userscript-settings-dialog.cgpt-settings-dark p { color: #B0B0B0 !important; }
+            #chatgpt-userscript-settings-dialog.cgpt-settings-dark button#settings-save-button { background-color: #1E8E3E !important; color: #FFFFFF !important; border: 1px solid #1A7D36 !important; }
+            #chatgpt-userscript-settings-dialog.cgpt-settings-dark button#settings-cancel-button { background-color: #4A4D4F !important; color: #E0E0E0 !important; border: 1px solid #3A3D3F !important; }
+            #chatgpt-userscript-settings-dialog.cgpt-settings-dark input[type="checkbox"] { filter: invert(1) hue-rotate(180deg) brightness(0.8) contrast(1.2); border: 1px solid #5A5D5F; }
+        `;
+        injectStyles(STYLE_ID_SETTINGS_DARK_MODE, cssSettingsDark);
         injectStyles(STYLE_ID_STYLING, cssStyling);
         injectStyles(STYLE_ID_COPY, cssCopy);
-        debugLog('CombinedScript Styles - Applied/updated via injectStyles with CSS variables.');
+        debugLog('CombinedScript Styles - Applied/updated via injectStyles with dark mode considerations.');
     }
 
     function initializeCopyButtonFeature() {
@@ -170,40 +188,39 @@
 
         if (currentSettings.enableCopyButton) {
             debugLog('CopyButton - Initializing.');
+            applyStylesOnLoad();
             findActionsContainerRetries = 0;
-            setTimeout(attemptToSetupCopyButtonObserver, 750);
+            attemptToSetupCopyButtonObserver();
             if (!window.__cgptCopyBtnBodyObserver) {
                 window.__cgptCopyBtnBodyObserver = new MutationObserver(() => {
                     if (!currentSettings.enableCopyButton || !pageVisible) return;
                     if (!document.getElementById('copy-chatgpt-conversation') &&
                         document.querySelector(ACTIONS_CONTAINER_SELECTOR)) {
                         debugLog('CopyButton - Body observer detected missing button. Re-initializing.');
-                        initializeCopyButtonFeature();
+                        attemptToSetupCopyButtonObserver();
                     }
                 });
-                if (pageVisible) window.__cgptCopyBtnBodyObserver.observe(document.body, { childList: true, subtree: true });
-            } else if (pageVisible && !copyButtonObserver && document.querySelector(ACTIONS_CONTAINER_SELECTOR)) { // Re-observe if already exists but disconnected
-                 if (!window.__cgptCopyBtnBodyObserver.takeRecords().length) { // Check if it's already observing
-                    try { window.__cgptCopyBtnBodyObserver.observe(document.body, { childList: true, subtree: true }); } catch(e) { /* already observing or error */ }
-                 }
+                if (pageVisible) {
+                     try { window.__cgptCopyBtnBodyObserver.observe(document.body, { childList: true, subtree: true }); } catch(e) { debugWarn("CopyButton: BodyObserver already observing or error.", e); }
+                }
             }
         } else {
             if (window.__cgptCopyBtnBodyObserver) {
                 window.__cgptCopyBtnBodyObserver.disconnect();
                 window.__cgptCopyBtnBodyObserver = null;
             }
+            injectStyles(STYLE_ID_BASE + 'copy', "");
             debugLog('CopyButton - Disabled by settings.');
         }
     }
-
     function attemptToSetupCopyButtonObserver() {
-        if (!currentSettings.enableCopyButton || !pageVisible) return;
+        if (!currentSettings.enableCopyButton) return;
         const actionsContainer = document.querySelector(ACTIONS_CONTAINER_SELECTOR);
         if (actionsContainer) {
             debugLog('CopyButton - Actions container found. Setting up MutationObserver.');
             if (copyButtonObserver) copyButtonObserver.disconnect();
             copyButtonObserver = new MutationObserver((mutationsList, observer) => {
-                if(!pageVisible) return;
+                if(!pageVisible || !currentSettings.enableCopyButton) return;
                 debugLog('CopyButton - Mutation in actions container.');
                 const currentActionsContainer = document.querySelector(ACTIONS_CONTAINER_SELECTOR);
                 if (!currentActionsContainer || !document.body.contains(currentActionsContainer)) {
@@ -224,7 +241,6 @@
             } else { debugError('CopyButton - Actions container not found. Observer not set up.'); }
         }
     }
-
     function ensureCopyButtonPresent(container) {
         if (!currentSettings.enableCopyButton || !container || !document.body.contains(container)) {
             const btn = document.getElementById('copy-chatgpt-conversation'); if (btn) btn.remove();
@@ -246,7 +262,6 @@
         container.insertBefore(copyBtn, shareButtonOriginal);
         debugLog('CopyButton - Injected/Re-injected.');
     }
-
     function buildConversationText() {
         const conversationTurns = document.querySelectorAll('article[data-testid^="conversation-turn-"]');
         let output = '';
@@ -288,7 +303,6 @@
         const originalContent = '📋'; btn.textContent = str;
         setTimeout(() => { const cb = document.getElementById('copy-chatgpt-conversation'); if(cb) cb.textContent = originalContent; }, 1500);
     }
-
     function findAndHidePlansButton() {
         if (!currentSettings.enableHidePlansButton) return false;
         hidePlansAttempts++;
@@ -342,7 +356,6 @@
             return false;
         }
     }
-
     function initializeHidePlansFeature() {
         if (hidePlansObserver) hidePlansObserver.disconnect(); hidePlansObserver = null;
         const previouslyHiddenWrapper = document.querySelector(`[${PLANS_BUTTON_WRAPPER_ATTR}="true"]`);
@@ -359,8 +372,7 @@
         findAndHidePlansButton();
         hidePlansObserver = new MutationObserver(debounce((mutationsList, observer) => {
             if (!currentSettings.enableHidePlansButton || !pageVisible) {
-                if(!pageVisible && currentSettings.enableHidePlansButton) return; // Paused due to page visibility
-                observer.disconnect(); hidePlansObserver = null; return;
+                return;
             }
             const wrapperProcessedAndHidden = document.querySelector(`[${PLANS_BUTTON_WRAPPER_ATTR}="true"]`);
             if (wrapperProcessedAndHidden && wrapperProcessedAndHidden.style.display === 'none') return;
@@ -370,10 +382,11 @@
              }
             findAndHidePlansButton();
         }, 300));
-        if (pageVisible) hidePlansObserver.observe(document.body, { childList: true, subtree: true });
+        if (pageVisible) {
+             try { hidePlansObserver.observe(document.body, { childList: true, subtree: true }); } catch(e) { debugWarn("HidePlans: Observer already observing or error.", e); }
+        }
         debugLog('HidePlans - MutationObserver monitoring (if page visible).');
     }
-    // --- END: Combined Utilities Feature ---
 
     // --- START: Timeline Sidebar Feature ---
     const TIMELINE_CSS_ID = "cgpt-timeline-styles";
@@ -387,63 +400,66 @@
     let timeline_intersectionObserver = null;
     let timeline_initialized = false;
 
-    const timelineCSS = `
-        /* ... (CSS remains the same as previous full version) ... */
-        #${TIMELINE_HTML_ID} {
-            position: fixed !important; top: 15vh !important; width: 4px !important;
-            height: 60vh !important; background-color: #B0B0B0 !important;
-            z-index: 2147483640 !important; border-radius: 2px !important;
-            transition: opacity 0.3s, left 0.3s ease-out;
-        }
-        #${TIMELINE_HTML_ID}.hidden { opacity: 0 !important; pointer-events: none !important; }
-        #${TIMELINE_HTML_ID} .cgpt-dots {
-            margin: 0 !important; padding: 0 !important; list-style: none !important;
-            position: relative !important; height: 100% !important;
-        }
-        #${TIMELINE_HTML_ID} .cgpt-dots li {
-            position: absolute !important; left: 50% !important; transform: translateX(-50%) !important;
-            width: 10px !important; height: 10px !important; padding: 4px !important;
-            box-sizing: content-box !important; border-radius: 50% !important; cursor: pointer !important;
-            transition: width 0.2s ease-in-out, height 0.2s ease-in-out, background-color 0.2s ease-in-out, transform 0.2s ease-in-out;
-        }
-        #${TIMELINE_HTML_ID} .cgpt-dots li::before {
-            content: ''; position: absolute; top: 50%; left: 50%;
-            width: 8px; height: 8px; background-color: grey;
-            border-radius: 50%; transform: translate(-50%, -50%);
-            transition: width 0.2s ease-in-out, height 0.2s ease-in-out, background-color 0.2s ease-in-out;
-        }
-        #${TIMELINE_HTML_ID} .cgpt-dots li.user::before { background-color: #4CAF50 !important; }
-        #${TIMELINE_HTML_ID} .cgpt-dots li.assistant::before { background-color: #0d6efd !important; }
-        #${TIMELINE_HTML_ID} .cgpt-dots li.active::before { width: 12px !important; height: 12px !important; }
-        #${TIMELINE_HTML_ID} .cgpt-dots li span {
-            position: absolute !important; white-space: nowrap !important; font-size: 11px !important;
-            left: 16px !important; top: 50% !important; transform: translateY(-50%) !important;
-            color: grey !important; background-color: rgba(255, 255, 255, 0.75);
-            padding: 1px 3px !important; border-radius: 2px !important; pointer-events: none;
-        }
-        #${TIMELINE_HTML_ID} .cgpt-dots li.endpoint-number span { color: black !important; font-weight: bold; }
-        #${TIMELINE_HTML_ID} .cgpt-dots li:not(.endpoint-number) span { opacity: 0.55 !important; }
-    `;
+    const TIMELINE_MESSAGE_THRESHOLD_FOR_EXPANSION = 30;
+    const TIMELINE_DEFAULT_TOP_VH = 15;
+    const TIMELINE_DEFAULT_HEIGHT_VH = 60;
+    const TIMELINE_EXPANDED_TOP_OFFSET_PX = 60;
+    const TIMELINE_EXPANDED_BOTTOM_OFFSET_PX = 90;
 
-    const timelineNavigatorHtml = `
-        <div id="${TIMELINE_HTML_ID}" class="hidden"><ul class="cgpt-dots"></ul></div>
-    `;
 
-    function timeline_injectCSS_local(cssText, id) { // Renamed to avoid conflict if global injectStyles has different purpose
-        let styleElement = document.getElementById(id);
-        if (!styleElement) {
-            styleElement = document.createElement('style');
-            styleElement.id = id; styleElement.type = 'text/css'; document.head.appendChild(styleElement);
-        }
-        styleElement.textContent = cssText;
+    function getTimelineCSS() {
+        const isDark = isDarkModeActive();
+        return `
+            #${TIMELINE_HTML_ID} {
+                position: fixed !important;
+                width: 4px !important;
+                background-color: ${isDark ? '#555' : '#B0B0B0'} !important;
+                z-index: 2147483640 !important;
+                border-radius: 2px !important;
+                transition: opacity 0.3s, left 0.3s ease-out, top 0.3s ease-out, height 0.3s ease-out;
+            }
+            #${TIMELINE_HTML_ID}.hidden { opacity: 0 !important; pointer-events: none !important; }
+            #${TIMELINE_HTML_ID} .cgpt-dots { margin: 0 !important; padding: 0 !important; list-style: none !important; position: relative !important; height: 100% !important; }
+            #${TIMELINE_HTML_ID} .cgpt-dots li { position: absolute !important; left: 50% !important; transform: translateX(-50%) !important; width: 10px !important; height: 10px !important; padding: 4px !important; box-sizing: content-box !important; border-radius: 50% !important; cursor: pointer !important; transition: width 0.2s ease-in-out, height 0.2s ease-in-out, background-color 0.2s ease-in-out, transform 0.2s ease-in-out; }
+            #${TIMELINE_HTML_ID} .cgpt-dots li::before { content: ''; position: absolute; top: 50%; left: 50%; width: 8px; height: 8px; background-color: ${isDark ? '#888' : 'grey'}; border-radius: 50%; transform: translate(-50%, -50%); transition: width 0.2s ease-in-out, height 0.2s ease-in-out, background-color 0.2s ease-in-out; }
+            #${TIMELINE_HTML_ID} .cgpt-dots li.user::before { background-color: ${isDark ? '#67A36A' : '#4CAF50'} !important; }
+            #${TIMELINE_HTML_ID} .cgpt-dots li.assistant::before { background-color: ${isDark ? '#3B82F6' : '#0d6efd'} !important; }
+            #${TIMELINE_HTML_ID} .cgpt-dots li.active::before { width: 12px !important; height: 12px !important; }
+            #${TIMELINE_HTML_ID} .cgpt-dots li span {
+                position: absolute !important; white-space: nowrap !important; font-size: 11px !important;
+                left: 16px !important; top: 50% !important; transform: translateY(-50%) !important;
+                color: ${isDark ? '#D0D0D0' : 'grey'} !important;
+                background-color: ${isDark ? 'rgba(40, 40, 40, 0.85)' : 'rgba(255, 255, 255, 0.75)'} !important;
+                padding: 1px 3px !important; border-radius: 2px !important; pointer-events: none;
+            }
+            #${TIMELINE_HTML_ID} .cgpt-dots li.endpoint-number span { color: ${isDark ? '#F0F0F0' : 'black'} !important; font-weight: bold; }
+            #${TIMELINE_HTML_ID} .cgpt-dots li:not(.endpoint-number) span { opacity: 0.75 !important; }
+        `;
+    }
+    const timelineNavigatorHtml = `<div id="${TIMELINE_HTML_ID}" class="hidden"><ul class="cgpt-dots"></ul></div>`;
+
+    function timeline_injectCSS_local() {
+        injectStyles(TIMELINE_CSS_ID, getTimelineCSS());
     }
 
     function timeline_updateTimelinePositionAndVisibility() {
         const $navigatorRoot = $(`#${TIMELINE_HTML_ID}`); if (!$navigatorRoot.length) return;
         const $mainElement = $('main');
         if (!$mainElement.length) { $navigatorRoot.addClass('hidden'); debugWarn('Timeline - Main element not found.'); return; }
+
         const mainRect = $mainElement.get(0).getBoundingClientRect();
         $navigatorRoot.css('left', (mainRect.left + 15) + 'px');
+
+        if (timeline_messages.length > TIMELINE_MESSAGE_THRESHOLD_FOR_EXPANSION) {
+            const newTop = TIMELINE_EXPANDED_TOP_OFFSET_PX;
+            const newHeight = window.innerHeight - TIMELINE_EXPANDED_TOP_OFFSET_PX - TIMELINE_EXPANDED_BOTTOM_OFFSET_PX;
+            $navigatorRoot.css({ 'top': newTop + 'px', 'height': newHeight + 'px' });
+            debugLog(`Timeline expanded: top ${newTop}px, height ${newHeight}px`);
+        } else {
+            $navigatorRoot.css({ 'top': TIMELINE_DEFAULT_TOP_VH + 'vh', 'height': TIMELINE_DEFAULT_HEIGHT_VH + 'vh' });
+            debugLog(`Timeline default: top ${TIMELINE_DEFAULT_TOP_VH}vh, height ${TIMELINE_DEFAULT_HEIGHT_VH}vh`);
+        }
+
         if (timeline_messages.length > 0 && timeline_chatScrollContainer && timeline_chatScrollContainer.length && timeline_chatScrollContainer.get(0).isConnected) {
             $navigatorRoot.removeClass('hidden');
         } else { $navigatorRoot.addClass('hidden'); }
@@ -456,6 +472,7 @@
         }
         if (!timeline_chatScrollContainer || !timeline_chatScrollContainer.length || !timeline_chatScrollContainer.get(0).isConnected) {
             debugLog('Timeline - Chat scroll container not found/connected.');
+            if (timeline_messages.length > 0) { timeline_messages = []; return true; }
             timeline_messages = []; return false;
         }
         timeline_chatScrollContainerTop = timeline_chatScrollContainer.get(0).getBoundingClientRect().top;
@@ -465,8 +482,10 @@
             const $messageDiv = $article.find('div[data-message-id]').first();
             let role = 'user';
             if ($article.find('div[data-message-author-role="assistant"]').length > 0) role = 'assistant';
+            else if ($article.find('div[data-message-author-role="user"]').length > 0) role = 'user';
             return { element: $messageDiv, role: role, id: $messageDiv.attr('data-message-id') };
         }).filter(msg => msg.element && msg.element.length > 0 && msg.id);
+
         if (newMessages.length !== timeline_messages.length || timeline_messages.some((oldMsg, idx) => oldMsg.id !== newMessages[idx]?.id)) {
             timeline_messages = newMessages;
             debugLog('Timeline - Message structure updated.', timeline_messages.length, 'messages found.');
@@ -477,12 +496,12 @@
 
     function timeline_renderDots() {
         const $dotsUl = $(`#${TIMELINE_HTML_ID} .cgpt-dots`); if (!$dotsUl.length) return;
+        if (timeline_intersectionObserver) { timeline_intersectionObserver.disconnect(); }
         $dotsUl.empty();
-        if (timeline_messages.length === 0) {
-             timeline_updateTimelinePositionAndVisibility();
-             if (timeline_intersectionObserver) timeline_intersectionObserver.disconnect();
-             return;
-        }
+        timeline_updateTimelinePositionAndVisibility();
+
+        if (timeline_messages.length === 0) return;
+
         timeline_messages.forEach((msgData, i) => {
             const li = $('<li/>').addClass(msgData.role === 'assistant' ? 'assistant' : 'user').attr('data-idx', i).attr('title', `הודעה ${i+1} (${msgData.role})`);
             if (i === 0 || i === timeline_messages.length - 1) li.addClass('endpoint-number');
@@ -491,8 +510,7 @@
             $dotsUl.append(li);
         });
         timeline_updateTimelineState(false);
-        timeline_updateTimelinePositionAndVisibility();
-        if (pageVisible) timeline_setupIntersectionObserver();
+        if (pageVisible && currentSettings.enableTimelineSidebar) { timeline_setupIntersectionObserver(); }
     }
 
     function timeline_updateTimelineState(isScrollingEvent = true) {
@@ -505,6 +523,7 @@
         const containerScrollTop = timeline_chatScrollContainer.scrollTop(), containerVisibleHeight = timeline_chatScrollContainer.innerHeight();
         let bestMatchIndex = -1, smallestPositiveOffset = Infinity;
         const visibilityThreshold = 0.3;
+
         for (let i = 0; i < timeline_messages.length; i++) {
             const msg = timeline_messages[i].element; if (!msg || !msg.length) continue;
             const msgDomElement = msg.get(0); if (!msgDomElement || !msgDomElement.isConnected) continue;
@@ -518,25 +537,26 @@
                 } else if (bestMatchIndex === -1) bestMatchIndex = i;
             }
         }
-        if (bestMatchIndex === -1 && timeline_currentMessageIndex !== -1 && timeline_currentMessageIndex < timeline_messages.length) {
-             const prevMsgEl = timeline_messages[timeline_currentMessageIndex].element.get(0);
-             if (prevMsgEl && prevMsgEl.isConnected) {
-                const prevRect = prevMsgEl.getBoundingClientRect();
-                if ((prevRect.top - timeline_chatScrollContainerTop + prevRect.height) > 0 && (prevRect.top - timeline_chatScrollContainerTop) < containerVisibleHeight) {
-                    bestMatchIndex = timeline_currentMessageIndex;
-                }
-             }
-        }
         if (bestMatchIndex === -1 && timeline_messages.length > 0) {
-            if (containerScrollTop <= 10) bestMatchIndex = 0;
-            else if (containerScrollTop + containerVisibleHeight >= timeline_chatScrollContainer.get(0).scrollHeight - 20) bestMatchIndex = timeline_messages.length - 1;
-            else bestMatchIndex = timeline_currentMessageIndex >= 0 && timeline_currentMessageIndex < timeline_messages.length ? timeline_currentMessageIndex : 0;
+            if (timeline_currentMessageIndex !== -1 && timeline_currentMessageIndex < timeline_messages.length) {
+                 const prevMsgEl = timeline_messages[timeline_currentMessageIndex].element.get(0);
+                 if (prevMsgEl && prevMsgEl.isConnected) {
+                    const prevRect = prevMsgEl.getBoundingClientRect();
+                    if ((prevRect.top - timeline_chatScrollContainerTop + prevRect.height) > 0 && (prevRect.top - timeline_chatScrollContainerTop) < containerVisibleHeight) {
+                        bestMatchIndex = timeline_currentMessageIndex;
+                    }
+                 }
+            }
+            if (bestMatchIndex === -1) {
+                if (containerScrollTop <= 10) bestMatchIndex = 0;
+                else if (containerScrollTop + containerVisibleHeight >= timeline_chatScrollContainer.get(0).scrollHeight - 20) bestMatchIndex = timeline_messages.length - 1;
+                else bestMatchIndex = (timeline_currentMessageIndex >= 0 && timeline_currentMessageIndex < timeline_messages.length) ? timeline_currentMessageIndex : 0;
+            }
         }
         bestMatchIndex = timeline_messages.length > 0 ? Math.max(0, Math.min(bestMatchIndex, timeline_messages.length - 1)) : -1;
         if (bestMatchIndex !== -1 && (timeline_currentMessageIndex !== bestMatchIndex || $dotsUl.children('li.active').length === 0) ) {
             timeline_currentMessageIndex = bestMatchIndex;
             $dotsUl.children('li').removeClass('active').eq(timeline_currentMessageIndex).addClass('active');
-            debugLog(`Timeline State: Active dot ${timeline_currentMessageIndex} via updateTimelineState`);
         }
     }
 
@@ -545,27 +565,31 @@
             if (timeline_intersectionObserver) timeline_intersectionObserver.disconnect();
             return;
         }
-        if (!('IntersectionObserver' in window)) { debugWarn("Timeline - IO not supported."); return; }
+        if (!('IntersectionObserver' in window)) { debugWarn("Timeline - IntersectionObserver not supported."); return; }
         if (timeline_intersectionObserver) timeline_intersectionObserver.disconnect();
         const rootEl = timeline_chatScrollContainer && timeline_chatScrollContainer.length ? timeline_chatScrollContainer.get(0) : null;
         if (!rootEl || timeline_messages.length === 0) {
-            debugLog("Timeline - IO not setup (no root/messages)."); return;
+            debugLog("Timeline - IO not setup (no root scroll container or no messages)."); return;
         }
         const io_options = { root: rootEl, rootMargin: '0px', threshold: 0.35 };
         timeline_intersectionObserver = new IntersectionObserver((entries) => {
-            if(!pageVisible) return;
-            let lastIntersectingIdx = -1;
+            if(!pageVisible || !currentSettings.enableTimelineSidebar) return;
+            let bestEntry = null;
             entries.forEach(entry => {
                 if (entry.isIntersecting) {
-                    const idx = parseInt(entry.target.getAttribute('data-cgpt-idx'));
-                    if (!isNaN(idx)) lastIntersectingIdx = idx;
+                    if (!bestEntry || entry.intersectionRatio > bestEntry.intersectionRatio) {
+                        bestEntry = entry;
+                    }
                 }
             });
-            const visibleIdx = lastIntersectingIdx !== -1 ? lastIntersectingIdx : timeline_currentMessageIndex;
-            if (visibleIdx !== -1 && visibleIdx < timeline_messages.length && (visibleIdx !== timeline_currentMessageIndex || !$(`#${TIMELINE_HTML_ID} .cgpt-dots li.active`).length)) {
-                timeline_currentMessageIndex = visibleIdx;
-                $(`#${TIMELINE_HTML_ID} .cgpt-dots li`).removeClass('active').eq(visibleIdx).addClass('active');
-                debugLog(`Timeline IO: Message ${visibleIdx} active.`);
+            if (bestEntry) {
+                 const idx = parseInt(bestEntry.target.getAttribute('data-cgpt-idx'));
+                 if (!isNaN(idx) && idx < timeline_messages.length) {
+                    if (idx !== timeline_currentMessageIndex || !$(`#${TIMELINE_HTML_ID} .cgpt-dots li.active`).length) {
+                        timeline_currentMessageIndex = idx;
+                        $(`#${TIMELINE_HTML_ID} .cgpt-dots li`).removeClass('active').eq(idx).addClass('active');
+                    }
+                 }
             }
         }, io_options);
         timeline_messages.forEach((msgData, i) => {
@@ -575,99 +599,98 @@
                 timeline_intersectionObserver.observe(domEl);
             }
         });
-        debugLog("Timeline - IntersectionObserver setup.");
+        debugLog("Timeline - IntersectionObserver setup and observing messages.");
     }
 
     function timeline_scrollToMessage(index, smooth = true) {
         const $dotsUl = $(`#${TIMELINE_HTML_ID} .cgpt-dots`);
-        const elementsFound = timeline_findChatElements();
-        if (!elementsFound && timeline_messages.length === 0) { timeline_renderDots(); return; }
         if (index >= 0 && index < timeline_messages.length) {
             const messageEl = timeline_messages[index].element;
-            if (messageEl && messageEl.length && messageEl.get(0) && messageEl.get(0).isConnected) {
+            if (messageEl && messageEl.length && messageEl.get(0) && messageEl.get(0).isConnected && timeline_chatScrollContainer && timeline_chatScrollContainer.length) {
                 const messageDomElement = messageEl.get(0);
-                timeline_chatScrollContainerTop = timeline_chatScrollContainer.get(0).getBoundingClientRect().top;
+                const scrollContainerElement = timeline_chatScrollContainer.get(0);
+                timeline_chatScrollContainerTop = scrollContainerElement.getBoundingClientRect().top;
                 const messageRectTop = messageDomElement.getBoundingClientRect().top;
                 const offsetRelativeToContainerViewport = messageRectTop - timeline_chatScrollContainerTop;
-                const targetScrollTop = timeline_chatScrollContainer.scrollTop() + offsetRelativeToContainerViewport;
-                timeline_currentMessageIndex = index;
-                if ($dotsUl.length) $dotsUl.children('li').removeClass('active').eq(timeline_currentMessageIndex).addClass('active');
-
-                const scrollContainerElement = timeline_chatScrollContainer.get(0);
+                const targetScrollTop = scrollContainerElement.scrollTop + offsetRelativeToContainerViewport;
+                if (timeline_currentMessageIndex !== index || !$dotsUl.children('li.active').length) {
+                    timeline_currentMessageIndex = index;
+                    if ($dotsUl.length) $dotsUl.children('li').removeClass('active').eq(timeline_currentMessageIndex).addClass('active');
+                }
                 if ('scrollTo' in scrollContainerElement && typeof scrollContainerElement.scrollTo === 'function') {
                     scrollContainerElement.scrollTo({ top: targetScrollTop, behavior: smooth ? 'smooth' : 'auto' });
-                } else { // Fallback for older browsers or if native scrollTo isn't available
-                    timeline_chatScrollContainer.stop().animate({ scrollTop: targetScrollTop }, smooth ? 300 : 0);
+                } else {
+                    $(scrollContainerElement).stop().animate({ scrollTop: targetScrollTop }, smooth ? 300 : 0);
                 }
                 debugLog(`Timeline - Scrolled to message index: ${index}`);
-                // IntersectionObserver should handle the active state after scroll, but a nudge can be good
-                requestAnimationFrame(() => timeline_updateTimelineState(false));
             } else {
-                debugWarn(`Timeline - Message element at index ${index} not found/connected.`);
-                timeline_renderDots();
+                debugWarn(`Timeline - Message element at index ${index} not found/connected or scroll container missing. Re-evaluating elements.`);
+                if(timeline_findChatElements()) timeline_renderDots();
             }
         } else { debugWarn(`Timeline - Invalid index ${index} for scrollToMessage.`); }
     }
 
     function timeline_setupDOMObserver() {
         if (timeline_domObserver) timeline_domObserver.disconnect();
-        const observerTargetNode = document.getElementById('thread') || document.body;
-        debugLog(`Timeline - DOMObserver target: ${observerTargetNode.id || observerTargetNode.tagName}`);
-        if (!observerTargetNode) { debugError("Timeline - Could not find target for DOMObserver."); return; }
-
+        const observerTargetNode = document.body;
+        debugLog(`Timeline - DOMObserver target: ${observerTargetNode.tagName}`);
         timeline_domObserver = new MutationObserver(debounce((mutationsList) => {
             if (!currentSettings.enableTimelineSidebar || !pageVisible) return;
             let refreshNeeded = false;
             for (const mutation of mutationsList) {
-                if (timeline_chatScrollContainer && timeline_chatScrollContainer.length && timeline_chatScrollContainer.get(0).contains(mutation.target)) {
-                    refreshNeeded = true; break;
-                }
-                if ($(mutation.target).closest('#thread').length > 0 || Array.from(mutation.addedNodes).some(node => $(node).closest('#thread').length > 0 || (node.id === 'thread'))) {
+                if (mutation.target.id === 'root' || mutation.target.tagName === 'MAIN' ||
+                    (mutation.target.parentElement && mutation.target.parentElement.id === 'root') ||
+                    $(mutation.target).closest('#thread').length > 0 ||
+                    Array.from(mutation.addedNodes).some(node => $(node).closest('#thread').length > 0 || (node.id === 'thread')) ||
+                    Array.from(mutation.removedNodes).some(node => $(node).closest('#thread').length > 0 || (node.id === 'thread'))) {
                      refreshNeeded = true; break;
                 }
-                 if (!timeline_chatScrollContainer || !timeline_chatScrollContainer.length) {
-                     if (mutation.type === 'childList' && (mutation.addedNodes.length || mutation.removedNodes.length)) {
-                         refreshNeeded = true; break;
-                     }
-                 }
+                if ((!timeline_chatScrollContainer || !timeline_chatScrollContainer.length) &&
+                    (mutation.type === 'childList' && (mutation.addedNodes.length || mutation.removedNodes.length))) {
+                     refreshNeeded = true; break;
+                }
             }
-
             if (refreshNeeded) {
                 debugLog("Timeline DOMObserver: Detected relevant DOM change.");
                 const messagesHaveChangedStructurally = timeline_findChatElements();
                 if (messagesHaveChangedStructurally) {
                     debugLog("Timeline DOMObserver: Message structure changed. Re-rendering dots.");
+                    const oldIndex = timeline_currentMessageIndex;
                     timeline_currentMessageIndex = -1;
-                    timeline_renderDots();
+                    timeline_renderDots(); // This will also update position/height
+                    if (DEBUG && oldIndex !== -1) console.log("Timeline DOMObserver: currentMessageIndex reset due to structural change.");
                 } else if (timeline_messages.length > 0 && !$(`#${TIMELINE_HTML_ID} .cgpt-dots li.active`).length) {
-                    debugLog("Timeline DOMObserver: No active dot, attempting update.");
+                    debugLog("Timeline DOMObserver: No active dot, attempting to update state based on calculation.");
                     timeline_updateTimelineState(false);
                 } else if (timeline_messages.length === 0 && $(`#${TIMELINE_HTML_ID} .cgpt-dots li`).length > 0) {
                     debugLog("Timeline DOMObserver: Messages cleared, re-rendering to remove dots.");
-                    timeline_renderDots();
-                }
-                // Self-disconnect if no messages are left to observe
-                if (timeline_messages.length === 0 && timeline_domObserver){
-                    debugLog("Timeline DOMObserver: No messages, disconnecting DOM observer.");
-                    timeline_domObserver.disconnect();
+                    timeline_renderDots(); // This will also update position/height to default
                 }
             }
         }, 500));
-        if (pageVisible) timeline_domObserver.observe(observerTargetNode, { childList: true, subtree: true });
-        debugLog("Timeline - DOMObserver attached (if page visible).");
+        if (pageVisible && currentSettings.enableTimelineSidebar) {
+            try { timeline_domObserver.observe(observerTargetNode, { childList: true, subtree: true }); } catch (e) { debugWarn("Timeline DOMObserver: Already observing or error.", e); }
+        }
+        debugLog("Timeline - DOMObserver attached (if page visible and feature enabled).");
     }
 
     function timeline_setupResizeObserver() {
         if (timeline_mainElementResizeObserver) timeline_mainElementResizeObserver.disconnect();
-        const mainEl = $('main').get(0);
-        if (!mainEl) {
-            $(window).off('resize.cgpttimeline').on('resize.cgpttimeline', debounce(timeline_updateTimelinePositionAndVisibility, 200));
-            debugWarn("Timeline - 'main' not found for ResizeObserver, fallback to window resize.");
-            return;
+        const mainEl = $('main').get(0); // Also observe 'main' for width changes
+        const windowEl = window;
+
+        const debouncedUpdate = debounce(timeline_updateTimelinePositionAndVisibility, 200);
+
+        if (mainEl) {
+            timeline_mainElementResizeObserver = new ResizeObserver(debouncedUpdate);
+            timeline_mainElementResizeObserver.observe(mainEl);
+            debugLog("Timeline - ResizeObserver attached to 'main'.");
+        } else {
+             debugWarn("Timeline - 'main' not found for ResizeObserver.");
         }
-        timeline_mainElementResizeObserver = new ResizeObserver(debounce(timeline_updateTimelinePositionAndVisibility, 200));
-        timeline_mainElementResizeObserver.observe(mainEl);
-        debugLog("Timeline - ResizeObserver attached to 'main'.");
+        // Always listen to window resize for height changes or if mainEl is not found
+        $(windowEl).off('resize.cgpttimeline').on('resize.cgpttimeline', debouncedUpdate);
+        debugLog("Timeline - Attached to window resize event.");
     }
 
     function timeline_cleanup() {
@@ -691,8 +714,14 @@
         }
         debugLog('Timeline - Attempting actual initialization...');
         if (!document.getElementById(TIMELINE_HTML_ID)) $('body').append(timelineNavigatorHtml);
-        timeline_injectCSS_local(timelineCSS, TIMELINE_CSS_ID);
+        timeline_injectCSS_local();
+
         const $navigatorRootTimeline = $(`#${TIMELINE_HTML_ID}`);
+         $navigatorRootTimeline.css({
+            'top': TIMELINE_DEFAULT_TOP_VH + 'vh',
+            'height': TIMELINE_DEFAULT_HEIGHT_VH + 'vh'
+        });
+
         if ($navigatorRootTimeline.length) {
             $navigatorRootTimeline.off('click.cgptTimelineDots').on('click.cgptTimelineDots', '.cgpt-dots li', function(e){
                 e.stopPropagation();
@@ -712,7 +741,6 @@
         timeline_setupResizeObserver();
         timeline_initialized = true;
         debugLog("Timeline - Initialized successfully.");
-        timeline_updateTimelinePositionAndVisibility();
     }
 
     function initializeTimelineFeatureWrapper() {
@@ -720,48 +748,64 @@
             if (!timeline_initialized) {
                 debugLog('Timeline - Feature enabled. Starting initialization...');
                 if ('requestIdleCallback' in window){
-                    requestIdleCallback(initializeActualTimelineLogic, { timeout: 4000 });
+                    requestIdleCallback(initializeActualTimelineLogic, { timeout: 2000 });
                 } else {
-                    setTimeout(initializeActualTimelineLogic, 3500); // Fallback
+                    setTimeout(initializeActualTimelineLogic, 1500);
                 }
             } else {
-                 debugLog('Timeline - Feature enabled, already initialized. Ensuring setup.');
-                 timeline_injectCSS_local(timelineCSS, TIMELINE_CSS_ID);
+                 debugLog('Timeline - Feature enabled, already initialized. Ensuring setup and visibility.');
+                 timeline_injectCSS_local();
                  timeline_updateTimelinePositionAndVisibility();
-                 if (pageVisible) { // Only setup observers if page is visible
-                    if (!timeline_domObserver || (timeline_domObserver && !timeline_domObserver.takeRecords().length)) timeline_setupDOMObserver(); // Re-setup if needed
-                    if (!timeline_mainElementResizeObserver) timeline_setupResizeObserver(); // Should be fine
-                    if (!timeline_intersectionObserver && timeline_messages.length > 0) timeline_setupIntersectionObserver();
+                 if (pageVisible) {
+                    if (!timeline_domObserver) timeline_setupDOMObserver();
+                    else { try { timeline_domObserver.observe(document.body, { childList: true, subtree: true }); } catch(e) {} }
+                    if (!timeline_mainElementResizeObserver) timeline_setupResizeObserver(); // Or ensure it's observing
+                    else {
+                        const mainEl = $('main').get(0);
+                        if (mainEl) try {timeline_mainElementResizeObserver.observe(mainEl);} catch(e){}
+                    }
+                    timeline_setupIntersectionObserver();
                  }
             }
         } else {
-            debugLog('Timeline - Feature disabled. Cleaning up...');
+            debugLog('Timeline - Feature disabled by settings. Cleaning up...');
             timeline_cleanup();
         }
     }
-    // --- END: Timeline Sidebar Feature ---
 
-    // --- START: Settings Dialog ---
+    // --- Settings Dialog ---
     function openSettingsDialog() {
         const DIALOG_ID = 'chatgpt-userscript-settings-dialog';
         let dialog = document.getElementById(DIALOG_ID);
-        if (dialog) { dialog.style.display = 'block'; }
-        else {
+        if (dialog) {
+            if (isDarkModeActive()) dialog.classList.add('cgpt-settings-dark');
+            else dialog.classList.remove('cgpt-settings-dark');
+            dialog.style.display = 'block';
+        } else {
             dialog = document.createElement('div');
             dialog.id = DIALOG_ID;
-            dialog.style.cssText = ` /* ... (dialog CSS same as before) ... */
+            if (isDarkModeActive()) {
+                dialog.classList.add('cgpt-settings-dark');
+            }
+            dialog.style.cssText = `
                 position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-                background-color: white; border: 1px solid #ccc; padding: 25px; z-index: 2147483647;
+                padding: 25px; z-index: 2147483647;
                 box-shadow: 0 4px 15px rgba(0,0,0,0.2); border-radius: 8px; direction: rtl; text-align: right;
-                width: 450px; font-family: sans-serif; max-height: 80vh; overflow-y: auto; `;
-            dialog.innerHTML = ` <!-- ... (dialog HTML same as before) ... -->
+                width: 450px; font-family: sans-serif; max-height: 80vh; overflow-y: auto;
+                background-color: white; border: 1px solid #ccc;
+            `;
+            dialog.innerHTML = `
                 <h3 style="margin-top:0; margin-bottom:20px; border-bottom: 1px solid #eee; padding-bottom:10px; font-size: 1.2em;">הגדרות כלי עזר וסרגל צד</h3>
                 <div style="margin-bottom: 12px;"><input type="checkbox" id="setting-enable-styling" style="margin-left: 8px; vertical-align: middle;"><label for="setting-enable-styling" style="vertical-align: middle; cursor:pointer;">הפעל עיצוב בועות ו-RTL</label></div>
                 <div style="margin-bottom: 12px;"><input type="checkbox" id="setting-enable-copy-button" style="margin-left: 8px; vertical-align: middle;"><label for="setting-enable-copy-button" style="vertical-align: middle; cursor:pointer;">הפעל כפתור "העתק שיחה"</label></div>
                 <div style="margin-bottom: 12px;"><input type="checkbox" id="setting-enable-hide-plans" style="margin-left: 8px; vertical-align: middle;"><label for="setting-enable-hide-plans" style="vertical-align: middle; cursor:pointer;">הסתר את כפתור "הצג תוכניות"</label></div>
                 <div style="margin-bottom: 20px;"><input type="checkbox" id="setting-enable-timeline-sidebar" style="margin-left: 8px; vertical-align: middle;"><label for="setting-enable-timeline-sidebar" style="vertical-align: middle; cursor:pointer;">הפעל סרגל צד לניווט (Timeline)</label></div>
-                <div style="text-align:left;"><button id="settings-save-button" style="background-color: #10a37f; color: white; border: none; padding: 10px 18px; border-radius: 5px; cursor: pointer; margin-left: 10px; font-size: 0.95em;">שמור וסגור</button><button id="settings-cancel-button" style="background-color: #aaa; color: white; border: none; padding: 10px 18px; border-radius: 5px; cursor: pointer; font-size: 0.95em;">ביטול</button></div>
-                <p style="font-size:0.85em; color:#555; margin-top:20px; margin-bottom:0;">שינויים יחולו במלואם לאחר רענון הדף או מיידית במידת האפשר.</p> `;
+                <div style="text-align:left;">
+                  <button id="settings-save-button" style="color: white; border: none; padding: 10px 18px; border-radius: 5px; cursor: pointer; margin-left: 10px; font-size: 0.95em; background-color: #10a37f;">שמור וסגור</button>
+                  <button id="settings-cancel-button" style="color: white; border: none; padding: 10px 18px; border-radius: 5px; cursor: pointer; font-size: 0.95em; background-color: #aaa;">ביטול</button>
+                </div>
+                <p style="font-size:0.85em; color:#555; margin-top:20px; margin-bottom:0;">שינויים יחולו במלואם לאחר רענון הדף או מיידית במידת האפשר.</p>
+            `;
             document.body.appendChild(dialog);
             document.getElementById('settings-save-button').addEventListener('click', () => {
                 currentSettings.enableStyling = document.getElementById('setting-enable-styling').checked;
@@ -787,59 +831,81 @@
         document.getElementById('setting-enable-hide-plans').checked = currentSettings.enableHidePlansButton;
         document.getElementById('setting-enable-timeline-sidebar').checked = currentSettings.enableTimelineSidebar;
     }
-    // --- END: Settings Dialog ---
 
-    // --- START: Main Initialization ---
+    // --- Theme Watcher ---
+    let themeWatcherObserver = null;
+    function initializeThemeWatcher() {
+        if (themeWatcherObserver) themeWatcherObserver.disconnect();
+        const htmlElement = document.documentElement;
+        if (!htmlElement) return;
+        themeWatcherObserver = new MutationObserver((mutationsList) => {
+            for (const mutation of mutationsList) {
+                if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+                    debugLog('HTML class attribute changed. Re-applying styles for dark mode check.');
+                    applyStylesOnLoad();
+                    if (currentSettings.enableTimelineSidebar && timeline_initialized) {
+                        timeline_injectCSS_local();
+                        timeline_updateTimelinePositionAndVisibility();
+                    }
+                    const settingsDialog = document.getElementById('chatgpt-userscript-settings-dialog');
+                    if (settingsDialog && settingsDialog.style.display === 'block') {
+                        if (isDarkModeActive()) settingsDialog.classList.add('cgpt-settings-dark');
+                        else settingsDialog.classList.remove('cgpt-settings-dark');
+                    }
+                    return;
+                }
+            }
+        });
+        themeWatcherObserver.observe(htmlElement, { attributes: true });
+        debugLog('Theme watcher initialized on <html> element.');
+    }
+
+    // --- Main Initialization ---
     function main() {
         loadSettings();
         applyStylesOnLoad();
         initializeCopyButtonFeature();
         initializeHidePlansFeature();
         initializeTimelineFeatureWrapper();
-        GM_registerMenuCommand('הגדרות כלי עזר וסרגל צד', openSettingsDialog);
+        initializeThemeWatcher();
+        GM_registerMenuCommand('הגדרות כלי עזר וסרגל צד (v3.1.6)', openSettingsDialog);
 
-        // Visibility handler to pause/resume observers
         document.addEventListener('visibilitychange', ()=>{
             const oldPageVisible = pageVisible;
             pageVisible = !document.hidden;
             debugLog(`Page visibility changed to: ${pageVisible}`);
-
-            if (pageVisible && !oldPageVisible) { // Page became visible
-                // Re-initialize or re-activate features that depend on visibility
+            if (pageVisible && !oldPageVisible) {
                 if (currentSettings.enableCopyButton) {
-                    if(window.__cgptCopyBtnBodyObserver && !copyButtonObserver && document.querySelector(ACTIONS_CONTAINER_SELECTOR)) {
-                        try { window.__cgptCopyBtnBodyObserver.observe(document.body, { childList: true, subtree: true }); } catch(e) { /* already observing */ }
-                    }
-                    if(!copyButtonObserver && document.querySelector(ACTIONS_CONTAINER_SELECTOR)) attemptToSetupCopyButtonObserver();
+                    if (!copyButtonObserver && document.querySelector(ACTIONS_CONTAINER_SELECTOR)) attemptToSetupCopyButtonObserver();
+                    else if (copyButtonObserver) { try { copyButtonObserver.observe(document.querySelector(ACTIONS_CONTAINER_SELECTOR) || document.body, { childList: true, subtree: true }); } catch(e) {} }
+                    if (window.__cgptCopyBtnBodyObserver) { try { window.__cgptCopyBtnBodyObserver.observe(document.body, { childList: true, subtree: true }); } catch(e) {} }
                 }
-                if (currentSettings.enableHidePlansButton && hidePlansObserver) {
-                     try { hidePlansObserver.observe(document.body, { childList: true, subtree: true }); } catch(e) { /* already observing */ }
+                if (currentSettings.enableHidePlansButton) {
+                    findAndHidePlansButton();
+                    if (!hidePlansObserver) initializeHidePlansFeature();
+                    else { try { hidePlansObserver.observe(document.body, { childList: true, subtree: true }); } catch(e) {} }
                 }
-                if (currentSettings.enableTimelineSidebar) {
-                    timeline_setupIntersectionObserver(); // Will re-observe if needed
-                    if (timeline_domObserver && (!timeline_domObserver.takeRecords || timeline_domObserver.takeRecords().length === 0)) { // Ensure it's not already observing
-                         const observerTargetNode = document.getElementById('thread') || document.body;
-                         try { timeline_domObserver.observe(observerTargetNode, { childList: true, subtree: true }); } catch(e) { /* already observing or error */ }
-                         debugLog("Timeline DOMObserver re-activated on visibility.")
-                    } else if (!timeline_domObserver && timeline_initialized) { // If observer was nulled but timeline is init
-                        timeline_setupDOMObserver(); // Recreate and observe
-                    }
-                    timeline_updateTimelinePositionAndVisibility(); // Refresh position
+                if (currentSettings.enableTimelineSidebar && timeline_initialized) {
+                    timeline_updateTimelinePositionAndVisibility();
+                    if (timeline_domObserver) { try { timeline_domObserver.observe(document.body, { childList: true, subtree: true }); } catch(e) {} }
+                    else if (timeline_initialized) timeline_setupDOMObserver();
+                    timeline_setupIntersectionObserver();
+                } else if (currentSettings.enableTimelineSidebar && !timeline_initialized) {
+                    initializeTimelineFeatureWrapper();
                 }
-            } else if (!pageVisible && oldPageVisible) { // Page became hidden
-                if (copyButtonObserver) copyButtonObserver.disconnect();
-                // window.__cgptCopyBtnBodyObserver can remain, it's lightweight
-                if (hidePlansObserver) hidePlansObserver.disconnect();
-                if (timeline_intersectionObserver) timeline_intersectionObserver.disconnect();
-                if (timeline_domObserver) timeline_domObserver.disconnect();
-                debugLog("Observers paused due to page hidden.");
+                 debugLog("Features re-checked/re-activated on page visibility.");
+            } else if (!pageVisible && oldPageVisible) {
+                if (timeline_intersectionObserver) {
+                    timeline_intersectionObserver.disconnect();
+                    debugLog("Timeline IntersectionObserver disconnected due to page hidden.");
+                }
             }
         });
-        debugLog('CombinedScript & Timeline Script v3.1.3 - Fully initialized.');
+        debugLog('CombinedScript & Timeline Script v3.1.6 - Fully initialized.');
     }
 
-    if (typeof $ === 'undefined') {
-        debugError("jQuery (slim) not loaded! Script cannot run.");
+    if (typeof $ === 'undefined' || typeof $.fn.jquery === 'undefined') {
+        debugError("jQuery not loaded! Script cannot run.");
         if (typeof GM_notification === 'function') GM_notification({ title: 'שגיאת טעינה', text: 'jQuery לא נטען, התוסף לא יפעל.', silent: false, timeout: 10000 });
         return;
     }
