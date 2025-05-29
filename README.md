@@ -21,14 +21,12 @@
 
 ## 🖼️ הדגמה חזותית
 
-*(כאן מומלץ להוסיף צילומי מסך או קובצי GIF המדגימים את התכונות. לדוגמה:)*
-
 **עיצוב משופר ו-RTL, **
-![עיצוב משופר ו-RTL, סרגל צד לניווט וכפתור העתקה]([+](https://raw.githubusercontent.com/Y-PLONI/ChatGPT-Enhancer/main/Screenshot_1.png))
+![עיצוב משופר ו-RTL, סרגל צד לניווט וכפתור העתקה]([+](https://raw.githubusercontent.com/Y-PLONI/ChatGPT-Enhancer/main/Screenshot_1.png)
 
 
 **חלונית הגדרות:**
-![חלונית הגדרות]([https://via](https://raw.githubusercontent.com/Y-PLONI/ChatGPT-Enhancer/main/Screenshot_2.png))
+![חלונית הגדרות]([https://via](https://raw.githubusercontent.com/Y-PLONI/ChatGPT-Enhancer/main/Screenshot_2.png)
 
 ---
 
