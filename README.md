@@ -35,8 +35,8 @@
 
 א.  **התקנת מנהל סקריפטים (Userscript Manager):**
     אם עדיין אין לכם, התקינו תוסף לדפדפן מסוג מנהל סקריפטים. האפשרויות המומלצות הן:
-    א   [Violentmonkey](https://violentmonkey.github.io/get-it/) (מומלץ, קוד פתוח)
-    ב   [Tampermonkey](https://www.tampermonkey.net/)
+    *   [Violentmonkey](https://violentmonkey.github.io/get-it/) (מומלץ, קוד פתוח)
+    *   [Tampermonkey](https://www.tampermonkey.net/)
 
 ב.  **התקנת ChatGPT-Enhancer:**
     לחצו על הקישור הישיר הבא להתקנת הסקריפט:
