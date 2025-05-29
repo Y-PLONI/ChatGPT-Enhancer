@@ -1,9 +1,9 @@
-# ChatGPT-Enhancer ✨ (משפר חווית ChatGPT)
+#  ✨ משפר חווית ChatGPT
 
 [![Userscript Version](https://img.shields.io/badge/version-3.1.3-blue.svg)](https://raw.githubusercontent.com/Y-PLONI/ChatGPT-Enhancer/main/SCRIPT.user.js)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**ChatGPT-Enhancer** הוא Userscript (סקריפט משתמש) מקיף עבור Violentmonkey/Tampermonkey, שנועד לשפר משמעותית את חווית השימוש שלכם ב-ChatGPT. הסקריפט מוסיף מגוון שיפורי ממשק וכלים שימושיים, כולל סרגל צד לניווט בשיחה, עיצוב צ'אט משופר, תמיכה מלאה בכתיבה מימין לשמאל (RTL) ובמיוחד בעברית, כפתור להעתקת השיחה בלחיצה אחת, ועוד – הכל ניתן להתאמה אישית דרך חלונית הגדרות ייעודית.
+**משפר ChatGPT** הוא Userscript (סקריפט משתמש) מקיף עבור Violentmonkey/Tampermonkey, שנועד לשפר משמעותית את חווית השימוש שלכם ב-ChatGPT. הסקריפט מוסיף מגוון שיפורי ממשק וכלים שימושיים, כולל סרגל צד לניווט בשיחה, עיצוב צ'אט משופר, תמיכה מלאה בכתיבה מימין לשמאל (RTL) ובמיוחד בעברית, כפתור להעתקת השיחה בלחיצה אחת, ועוד – הכל ניתן להתאמה אישית דרך חלונית הגדרות ייעודית.
 
 ---
 
@@ -38,8 +38,8 @@
 
 1.  **התקנת מנהל סקריפטים (Userscript Manager):**
     אם עדיין אין לכם, התקינו תוסף לדפדפן מסוג מנהל סקריפטים. האפשרויות המומלצות הן:
-    *   [Violentmonkey](https://violentmonkey.github.io/get-it/) (מומלץ, קוד פתוח)
-    *   [Tampermonkey](https://www.tampermonkey.net/)
+    א   [Violentmonkey](https://violentmonkey.github.io/get-it/) (מומלץ, קוד פתוח)
+    ב   [Tampermonkey](https://www.tampermonkey.net/)
 
 2.  **התקנת ChatGPT-Enhancer:**
     לחצו על הקישור הישיר הבא להתקנת הסקריפט:
