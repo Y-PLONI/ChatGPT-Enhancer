@@ -22,12 +22,11 @@
 ## 🖼️ הדגמה חזותית
 
 **עיצוב משופר ו-RTL, **
-![עיצוב משופר ו-RTL, סרגל צד לניווט וכפתור העתקה]([+](https://raw.githubusercontent.com/Y-PLONI/ChatGPT-Enhancer/main/Screenshot_1.png)
+![עיצוב משופר ו-RTL, סרגל צד לניווט וכפתור העתקה]((https://raw.githubusercontent.com/Y-PLONI/ChatGPT-Enhancer/main/Screenshot_1.png))
 
 
 **חלונית הגדרות:**
-![חלונית הגדרות]([https://via](https://raw.githubusercontent.com/Y-PLONI/ChatGPT-Enhancer/main/Screenshot_2.png)
-
+![חלונית הגדרות]((https://raw.githubusercontent.com/Y-PLONI/ChatGPT-Enhancer/main/Screenshot_2.png))
 ---
 
 ## 📦 מדריך התקנה
