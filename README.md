@@ -23,14 +23,12 @@
 
 *(כאן מומלץ להוסיף צילומי מסך או קובצי GIF המדגימים את התכונות. לדוגמה:)*
 
-**עיצוב משופר ו-RTL:**
-![עיצוב משופר ו-RTL](https://via.placeholder.com/600x300.png?text=צילום+מסך+של+עיצוב+משופר+ו-RTL)
+**עיצוב משופר ו-RTL, **
+![עיצוב משופר ו-RTL, סרגל צד לניווט וכפתור העתקה]([+](https://raw.githubusercontent.com/Y-PLONI/ChatGPT-Enhancer/main/Screenshot_1.png))
 
-**סרגל צד לניווט:**
-![סרגל צד לניווט](https://via.placeholder.com/600x300.png?text=צילום+מסך+של+סרגל+צד+לניווט)
 
-**כפתור העתקה וחלונית הגדרות:**
-![כפתור העתקה והגדרות](https://via.placeholder.com/600x300.png?text=צילום+מסך+של+כפתור+העתקה+והגדרות)
+**חלונית הגדרות:**
+![חלונית הגדרות]([https://via](https://raw.githubusercontent.com/Y-PLONI/ChatGPT-Enhancer/main/Screenshot_2.png))
 
 ---
 
@@ -43,7 +41,7 @@
 
 ב.  **התקנת ChatGPT-Enhancer:**
     לחצו על הקישור הישיר הבא להתקנת הסקריפט:
-    *   ⬅️ **[התקנת הסקריפט ChatGPT-Enhancer](https://raw.githubusercontent.com/Y-PLONI/ChatGPT-Enhancer/main/ChatGPT-Enhancer.user.js**
+    *   ⬅️ **[התקנת הסקריפט ChatGPT-Enhancer](https://raw.githubusercontent.com/Y-PLONI/ChatGPT-Enhancer/main/ChatGPT-Enhancer.user.js)**
 
     מנהל הסקריפטים שלכם ייפתח ויבקש מכם לאשר את ההתקנה.
 
