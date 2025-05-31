@@ -76,7 +76,7 @@
 
 ## 📜 רישיון
 
-פרויקט זה מופץ תחת רישיון MIT. עיינו בקובץ [LICENSE.md](LICENSE.md) לפרטים נוספים (ניתן גם פשוט לציין "פרויקט זה תחת רישיון MIT").
+פרויקט זה מופץ תחת רישיון MIT. עיינו בקובץ [LICENSE.md](LICENSE.md) לפרטים נוספים.
 
 זכויות יוצרים (c) 2025 Y-PLONI
 
