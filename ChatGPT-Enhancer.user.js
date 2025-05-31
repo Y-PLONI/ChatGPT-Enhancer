@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         כלי עזר משולבים וסרגל צד ל-ChatGPT (עם הגדרות v3.1.9 - תיקוני טבלאות ורשימות)
-// @namespace    http://tampermonkey.net/
-// @version      3.1.11
-// @description  משלב עיצוב בועות, RTL, העתקה, הסתרת "תוכניות", וסרגל צד Timeline דינמי מרובה עמודות, עם התאמה אישית, אופטימיזציות, ותמיכה במצב כהה. תיקונים לטבלאות ורשימות.
-// @author       Y-PLONI (שינויים על ידי עוזר AI)
+// @namespace    http://tamp//ermonkey.net/
+// @version      3.1.12
+// @description  משלב עיצוב בועות, RTL, העתקה, הסתרת "תוכניות", וסרגל צד Timeline דינמי מרובה עמודות, עם התאמה אישית, אופטימיזציות, ותמיכה במצב כהה. תיקונים לטבלאות ורשימות. (אופטימיזציות CPU/RAM)
+// @author       Y-PLONI
 // @match        *://chatgpt.com/*
 // @match        *://chat.openai.com/*
 // @grant        GM_addStyle
@@ -27,7 +27,7 @@
     const debugWarn = DEBUG ? (...args) => console.warn('[CGPT Script]', ...args) : () => {};
     const debugError = DEBUG ? (...args) => console.error('[CGPT Script]', ...args) : () => {};
 
-    debugLog('ChatGPT Combined Utilities & Timeline Script v3.1.9 - Started');
+    debugLog('ChatGPT Combined Utilities & Timeline Script v3.1.9 (Optimized) - Started');
 
     // --- START: Settings and General Utilities ---
     const SETTINGS_KEYS = {
@@ -53,10 +53,10 @@
         if (cssText){
             if (!el){ el = document.createElement('style'); el.id = id; document.head.appendChild(el); }
             el.textContent = cssText;
-            debugLog(`Styles injected/updated for ID: ${id}`);
+            // debugLog(`Styles injected/updated for ID: ${id}`); // Less verbose
         } else if (el){
             el.remove();
-            debugLog(`Styles removed for ID: ${id}`);
+            // debugLog(`Styles removed for ID: ${id}`); // Less verbose
         }
     }
 
@@ -88,6 +88,7 @@
     const PLANS_BUTTON_ITEM_SELECTOR = 'div[class*="__menu-item"]';
     const PLANS_BUTTON_WRAPPER_ATTR = 'data-plans-wrapper-hidden-by-script';
     const PLANS_BUTTON_ITEM_ATTR = 'data-plans-item-hidden-by-script';
+    const SCRIPT_HIDDEN_CLASS = 'cgpt-script-hidden'; // For CSS hiding
 
     let copyButtonObserver = null;
     let findActionsContainerRetries = 0;
@@ -102,10 +103,15 @@
         const STYLE_ID_STYLING = STYLE_ID_BASE + 'styling';
         const STYLE_ID_COPY    = STYLE_ID_BASE + 'copy';
         const STYLE_ID_SETTINGS_DARK_MODE = STYLE_ID_BASE + 'settings-dark';
+        const STYLE_ID_UTILITY = STYLE_ID_BASE + 'utility'; // For .cgpt-script-hidden
 
-        let cssStyling = "", cssCopy = "", cssSettingsDark = "";
+        let cssStyling = "", cssCopy = "", cssSettingsDark = "", cssUtility = "";
         const isDarkMode = isDarkModeActive();
-        debugLog('Applying styles. Dark mode active:', isDarkMode);
+        // debugLog('Applying styles. Dark mode active:', isDarkMode); // Less verbose
+
+        cssUtility = `
+            .${SCRIPT_HIDDEN_CLASS} { display: none !important; }
+        `;
 
         if (currentSettings.enableStyling) {
             cssStyling += `
@@ -208,10 +214,11 @@
             #chatgpt-userscript-settings-dialog.cgpt-settings-dark button#settings-cancel-button { background-color: #4A4D4F !important; color: #E0E0E0 !important; border: 1px solid #3A3D3F !important; }
             #chatgpt-userscript-settings-dialog.cgpt-settings-dark input[type="checkbox"] { filter: invert(1) hue-rotate(180deg) brightness(0.8) contrast(1.2); border: 1px solid #5A5D5F; }
         `;
+        injectStyles(STYLE_ID_UTILITY, cssUtility);
         injectStyles(STYLE_ID_SETTINGS_DARK_MODE, cssSettingsDark);
         injectStyles(STYLE_ID_STYLING, cssStyling);
         injectStyles(STYLE_ID_COPY, cssCopy);
-        debugLog('CombinedScript Styles - Applied/updated via injectStyles with dark mode considerations.');
+        // debugLog('CombinedScript Styles - Applied/updated via injectStyles with dark mode considerations.'); // Less verbose
     }
 
     function initializeCopyButtonFeature() {
@@ -221,7 +228,7 @@
 
         if (currentSettings.enableCopyButton) {
             debugLog('CopyButton - Initializing.');
-            applyStylesOnLoad();
+            applyStylesOnLoad(); // Ensure styles are present
             findActionsContainerRetries = 0;
             attemptToSetupCopyButtonObserver();
             if (!window.__cgptCopyBtnBodyObserver) {
@@ -254,12 +261,18 @@
             if (copyButtonObserver) copyButtonObserver.disconnect();
             copyButtonObserver = new MutationObserver((mutationsList, observer) => {
                 if(!pageVisible || !currentSettings.enableCopyButton) return;
-                debugLog('CopyButton - Mutation in actions container.');
+                // debugLog('CopyButton - Mutation in actions container.'); // Can be verbose
                 const currentActionsContainer = document.querySelector(ACTIONS_CONTAINER_SELECTOR);
                 if (!currentActionsContainer || !document.body.contains(currentActionsContainer)) {
                     debugWarn('CopyButton - Actions container no longer in DOM. Re-initializing.');
                     observer.disconnect(); copyButtonObserver = null; findActionsContainerRetries = 0;
-                    setTimeout(attemptToSetupCopyButtonObserver, RETRY_MS * 2);
+                    // Use requestIdleCallback for retrying
+                    const retryDelay = RETRY_MS * 2;
+                    if (typeof requestIdleCallback === 'function') {
+                        requestIdleCallback(() => attemptToSetupCopyButtonObserver(), { timeout: retryDelay });
+                    } else {
+                        setTimeout(attemptToSetupCopyButtonObserver, retryDelay);
+                    }
                     return;
                 }
                 ensureCopyButtonPresent(currentActionsContainer);
@@ -270,7 +283,12 @@
             findActionsContainerRetries++;
             if (findActionsContainerRetries < MAX_FIND_ACTIONS_CONTAINER_RETRIES) {
                 debugLog(`CopyButton - Actions container not found (attempt ${findActionsContainerRetries}). Retrying...`);
-                setTimeout(attemptToSetupCopyButtonObserver, RETRY_MS * (findActionsContainerRetries < 5 ? 2 : 4));
+                const delay = RETRY_MS * (findActionsContainerRetries < 5 ? 2 : 4);
+                 if (typeof requestIdleCallback === 'function') {
+                    requestIdleCallback(() => attemptToSetupCopyButtonObserver(), { timeout: delay });
+                } else {
+                    setTimeout(attemptToSetupCopyButtonObserver, delay);
+                }
             } else { debugError('CopyButton - Actions container not found. Observer not set up.'); }
         }
     }
@@ -281,7 +299,7 @@
         }
         const shareButtonOriginal = container.querySelector(SHARE_BUTTON_SELECTOR);
         if (!shareButtonOriginal) {
-            debugLog('CopyButton - Share button not found in container, possibly transient.');
+            // debugLog('CopyButton - Share button not found in container, possibly transient.'); // Can be verbose
             return;
         }
         let copyBtn = document.getElementById('copy-chatgpt-conversation');
@@ -295,6 +313,7 @@
         container.insertBefore(copyBtn, shareButtonOriginal);
         debugLog('CopyButton - Injected/Re-injected.');
     }
+
     function buildConversationText() {
         const conversationTurns = document.querySelectorAll('article[data-testid^="conversation-turn-"]');
         let output = '';
@@ -305,14 +324,15 @@
             if (userMessageBlock) {
                 role = 'user';
                 const textElement = userMessageBlock.querySelector('.whitespace-pre-wrap');
-                text = textElement ? textElement.innerText.trim() : userMessageBlock.innerText.trim();
+                text = textElement ? textElement.textContent.trim() : userMessageBlock.textContent.trim(); // OPTIMIZED
             } else if (assistantMessageBlock) {
                 role = 'assistant';
                 const markdownProseElement = assistantMessageBlock.querySelector('.markdown.prose');
-                if (markdownProseElement) text = markdownProseElement.innerText.trim();
-                else {
+                if (markdownProseElement) {
+                    text = markdownProseElement.textContent.trim(); // OPTIMIZED
+                } else {
                     const fallbackTextElement = assistantMessageBlock.querySelector('div[data-message-id] > div > div:not([class*="agent-verification"])');
-                    text = fallbackTextElement ? fallbackTextElement.innerText.trim() : assistantMessageBlock.innerText.trim();
+                    text = fallbackTextElement ? fallbackTextElement.textContent.trim() : assistantMessageBlock.textContent.trim(); // OPTIMIZED
                 }
             }
             if (text) output += (role === 'user' ? 'שאלתי:\n' : 'וענו לי:\n') + text + '\n\n';
@@ -336,22 +356,30 @@
         const originalContent = '📋'; btn.textContent = str;
         setTimeout(() => { const cb = document.getElementById('copy-chatgpt-conversation'); if(cb) cb.textContent = originalContent; }, 1500);
     }
+
     function findAndHidePlansButton() {
         if (!currentSettings.enableHidePlansButton) return false;
         hidePlansAttempts++;
-        debugLog(`HidePlans - Attempt ${hidePlansAttempts} to find and hide.`);
+        // debugLog(`HidePlans - Attempt ${hidePlansAttempts} to find and hide.`); // Less verbose
         const potentialItems = document.querySelectorAll(PLANS_BUTTON_ITEM_SELECTOR);
         let itemToHide = null;
         for (let i = 0; i < potentialItems.length; i++) {
             const item = potentialItems[i];
-            if (item.getAttribute(PLANS_BUTTON_ITEM_ATTR) || (item.parentElement && item.parentElement.getAttribute(PLANS_BUTTON_WRAPPER_ATTR))) {
-                if (item.parentElement && item.parentElement.getAttribute(PLANS_BUTTON_WRAPPER_ATTR) && item.parentElement.style.display !== 'none') {
-                    item.parentElement.style.display = 'none';
-                } else if (item.getAttribute(PLANS_BUTTON_ITEM_ATTR) && item.style.display !== 'none' && !(item.parentElement && item.parentElement.getAttribute(PLANS_BUTTON_WRAPPER_ATTR))) {
-                     item.style.display = 'none';
+            const parentEl = item.parentElement;
+
+            if (parentEl && parentEl.getAttribute(PLANS_BUTTON_WRAPPER_ATTR)) {
+                if (!parentEl.classList.contains(SCRIPT_HIDDEN_CLASS)) {
+                    parentEl.classList.add(SCRIPT_HIDDEN_CLASS);
                 }
                 continue;
             }
+            if (item.getAttribute(PLANS_BUTTON_ITEM_ATTR) && !(parentEl && parentEl.getAttribute(PLANS_BUTTON_WRAPPER_ATTR))) {
+                 if (!item.classList.contains(SCRIPT_HIDDEN_CLASS)) {
+                     item.classList.add(SCRIPT_HIDDEN_CLASS);
+                 }
+                continue;
+            }
+
             const mainTextElement = item.querySelector('.truncate');
             if (!mainTextElement || mainTextElement.textContent.trim() !== HIDE_PLANS_MAIN_TEXT) continue;
             const minW0Container = item.querySelector('div.min-w-0');
@@ -368,33 +396,41 @@
             if (!svgIcon) continue;
             itemToHide = item; break;
         }
+
         if (itemToHide) {
             const wrapperToHide = itemToHide.parentElement;
             if (wrapperToHide && wrapperToHide.tagName !== 'BODY' && wrapperToHide.contains(itemToHide) && wrapperToHide.classList.contains('bg-token-bg-elevated-secondary')) {
-                 if (wrapperToHide.style.display !== 'none') {
-                    debugLog('HidePlans - Wrapper identified. Hiding it:', wrapperToHide);
-                    wrapperToHide.style.display = 'none';
+                 if (!wrapperToHide.classList.contains(SCRIPT_HIDDEN_CLASS)) {
+                    debugLog('HidePlans - Wrapper identified. Hiding it with class:', wrapperToHide);
+                    wrapperToHide.classList.add(SCRIPT_HIDDEN_CLASS);
                 }
                 wrapperToHide.setAttribute(PLANS_BUTTON_WRAPPER_ATTR, 'true');
-                itemToHide.setAttribute(PLANS_BUTTON_ITEM_ATTR, 'true');
-                itemToHide.style.display = 'none';
+                itemToHide.setAttribute(PLANS_BUTTON_ITEM_ATTR, 'true'); // Still set attr for consistency
+                if (!itemToHide.classList.contains(SCRIPT_HIDDEN_CLASS)) itemToHide.classList.add(SCRIPT_HIDDEN_CLASS);
+
             } else {
-                debugWarn('HidePlans - Wrapper not as expected. Hiding only inner item.', itemToHide, wrapperToHide);
-                 if (itemToHide.style.display !== 'none') itemToHide.style.display = 'none';
+                debugWarn('HidePlans - Wrapper not as expected. Hiding only inner item with class.', itemToHide, wrapperToHide);
+                 if (!itemToHide.classList.contains(SCRIPT_HIDDEN_CLASS)) itemToHide.classList.add(SCRIPT_HIDDEN_CLASS);
                 itemToHide.setAttribute(PLANS_BUTTON_ITEM_ATTR, 'true');
             }
             return true;
         } else {
-            if (potentialItems.length > 0) debugLog(`HidePlans - Target not fully matched among ${potentialItems.length} candidates.`);
+            // if (potentialItems.length > 0) debugLog(`HidePlans - Target not fully matched among ${potentialItems.length} candidates.`); // Less verbose
             return false;
         }
     }
+
     function initializeHidePlansFeature() {
         if (hidePlansObserver) hidePlansObserver.disconnect(); hidePlansObserver = null;
-        const previouslyHiddenWrapper = document.querySelector(`[${PLANS_BUTTON_WRAPPER_ATTR}="true"]`);
-        if (previouslyHiddenWrapper) { previouslyHiddenWrapper.style.display = ''; previouslyHiddenWrapper.removeAttribute(PLANS_BUTTON_WRAPPER_ATTR); }
-        const previouslyHiddenItem = document.querySelector(`[${PLANS_BUTTON_ITEM_ATTR}="true"]`);
-        if (previouslyHiddenItem) { previouslyHiddenItem.style.display = ''; previouslyHiddenItem.removeAttribute(PLANS_BUTTON_ITEM_ATTR); }
+
+        document.querySelectorAll(`[${PLANS_BUTTON_WRAPPER_ATTR}="true"]`).forEach(el => {
+            el.classList.remove(SCRIPT_HIDDEN_CLASS);
+            el.removeAttribute(PLANS_BUTTON_WRAPPER_ATTR);
+        });
+        document.querySelectorAll(`[${PLANS_BUTTON_ITEM_ATTR}="true"]`).forEach(el => {
+            el.classList.remove(SCRIPT_HIDDEN_CLASS);
+            el.removeAttribute(PLANS_BUTTON_ITEM_ATTR);
+        });
 
         if (!currentSettings.enableHidePlansButton) {
             debugLog('HidePlans - Disabled by settings. Ensured elements visible.');
@@ -402,16 +438,17 @@
         }
         debugLog('HidePlans - Initializing.');
         hidePlansAttempts = 0;
-        findAndHidePlansButton();
+        findAndHidePlansButton(); // Initial attempt
         hidePlansObserver = new MutationObserver(debounce((mutationsList, observer) => {
             if (!currentSettings.enableHidePlansButton || !pageVisible) {
                 return;
             }
             const wrapperProcessedAndHidden = document.querySelector(`[${PLANS_BUTTON_WRAPPER_ATTR}="true"]`);
-            if (wrapperProcessedAndHidden && wrapperProcessedAndHidden.style.display === 'none') return;
+            if (wrapperProcessedAndHidden && wrapperProcessedAndHidden.classList.contains(SCRIPT_HIDDEN_CLASS)) return;
+
             const itemProcessedAndHidden = document.querySelector(`[${PLANS_BUTTON_ITEM_ATTR}="true"]`);
-             if (itemProcessedAndHidden && itemProcessedAndHidden.style.display === 'none' && !wrapperProcessedAndHidden) {
-                 debugLog("HidePlans - Item hidden but wrapper not, re-evaluating.");
+             if (itemProcessedAndHidden && itemProcessedAndHidden.classList.contains(SCRIPT_HIDDEN_CLASS) && !wrapperProcessedAndHidden) {
+                 debugLog("HidePlans - Item hidden by class but wrapper not, re-evaluating.");
              }
             findAndHidePlansButton();
         }, 300));
@@ -425,8 +462,9 @@
     const TIMELINE_CSS_ID = "cgpt-timeline-styles";
     const TIMELINE_HTML_ID_PREFIX = "cgpt-timeline-root-";
     let timeline_messages = [];
+    let timeline_messages_ids_hash = ""; // OPTIMIZED: For tracking changes in message IDs
     let timeline_currentMessageIndex = -1;
-    let timeline_chatScrollContainer;
+    let timeline_chatScrollContainer; // This is a jQuery object
     let timeline_chatScrollContainerTop = 0;
     let timeline_mainElementResizeObserver = null;
     let timeline_domObserver = null;
@@ -443,7 +481,6 @@
     const TIMELINE_EXPANDED_TOP_OFFSET_PX = 60;
     const TIMELINE_EXPANDED_BOTTOM_OFFSET_PX = 90;
 
-
     function _getTimelineLayoutConfig() {
         let numSidebars = 0;
         if (timeline_messages.length > 0) {
@@ -453,28 +490,35 @@
         return { numSidebars, messagesPerEffectiveSidebar };
     }
 
-
     const getTimelineSidebarHtml = (index) => `<div id="${TIMELINE_HTML_ID_PREFIX}${index}" class="cgpt-timeline-sidebar-instance hidden"><ul class="cgpt-dots"></ul></div>`;
 
+    function timeline_ensureSidebarDivs(targetCount) { // OPTIMIZED: Uses Vanilla JS
+        const existingSidebars = document.querySelectorAll(`div[id^="${TIMELINE_HTML_ID_PREFIX}"]`);
 
-    function timeline_ensureSidebarDivs(targetCount) {
-        const $existingSidebars = $('div[id^="' + TIMELINE_HTML_ID_PREFIX + '"]');
-
-        for (let i = $existingSidebars.length - 1; i >= targetCount; i--) {
-            $($existingSidebars[i]).remove();
+        for (let i = existingSidebars.length - 1; i >= targetCount; i--) {
+            existingSidebars[i].remove();
             debugLog(`Timeline - Removed sidebar DIV: ${TIMELINE_HTML_ID_PREFIX}${i}`);
         }
 
-        for (let i = $existingSidebars.length; i < targetCount; i++) {
-            $('body').append(getTimelineSidebarHtml(i));
-            debugLog(`Timeline - Added sidebar DIV: ${TIMELINE_HTML_ID_PREFIX}${i}`);
+        const fragment = document.createDocumentFragment();
+        for (let i = existingSidebars.length; i < targetCount; i++) {
+            const sidebarHtml = getTimelineSidebarHtml(i);
+            // Create a temporary element to parse the HTML string
+            const tempContainer = document.createElement('div');
+            tempContainer.innerHTML = sidebarHtml.trim();
+            const sidebarElement = tempContainer.firstChild;
+            if (sidebarElement) {
+                fragment.appendChild(sidebarElement);
+                debugLog(`Timeline - Added sidebar DIV: ${TIMELINE_HTML_ID_PREFIX}${i}`);
+            }
+        }
+        if (fragment.childNodes.length > 0) {
+            document.body.appendChild(fragment);
         }
     }
 
-
     function getTimelineCSS() {
         const isDark = isDarkModeActive();
-
         return `
             div[id^="${TIMELINE_HTML_ID_PREFIX}"] {
                 position: fixed !important;
@@ -504,31 +548,28 @@
         `;
     }
 
-
     function timeline_injectCSS_local() {
         injectStyles(TIMELINE_CSS_ID, getTimelineCSS());
     }
 
     function timeline_updateTimelinePositionAndVisibility() {
-        const $mainElement = $('main');
-        if (!$mainElement.length) {
-            $('div[id^="' + TIMELINE_HTML_ID_PREFIX + '"]').addClass('hidden');
+        const mainElement = document.querySelector('main'); // Use vanilla JS
+        if (!mainElement) {
+            document.querySelectorAll(`div[id^="${TIMELINE_HTML_ID_PREFIX}"]`).forEach(el => el.classList.add('hidden'));
             debugWarn('Timeline - Main element not found.'); return;
         }
 
-        const mainRect = $mainElement.get(0).getBoundingClientRect();
+        const mainRect = mainElement.getBoundingClientRect();
         const baseLeftOffset = mainRect.left + 15;
 
         const { numSidebars, messagesPerEffectiveSidebar } = _getTimelineLayoutConfig();
 
         for (let s = 0; s < numSidebars; s++) {
-            const $navigatorRoot = $(`#${TIMELINE_HTML_ID_PREFIX}${s}`);
-            if (!$navigatorRoot.length) continue;
-
+            const navigatorRoot = document.getElementById(`${TIMELINE_HTML_ID_PREFIX}${s}`); // Use vanilla JS
+            if (!navigatorRoot) continue;
 
             const currentLeft = baseLeftOffset + s * (TIMELINE_SIDEBAR_VISUAL_WIDTH_PX + TIMELINE_SIDEBAR_SPACING_PX);
-            $navigatorRoot.css('left', currentLeft + 'px');
-
+            navigatorRoot.style.left = currentLeft + 'px'; // Use vanilla JS
 
             const startIndex = s * messagesPerEffectiveSidebar;
             const endIndex = Math.min(startIndex + messagesPerEffectiveSidebar, timeline_messages.length);
@@ -537,64 +578,115 @@
             if (numMessagesInThisSidebar > TIMELINE_MESSAGE_THRESHOLD_FOR_EXPANSION) {
                 const newTop = TIMELINE_EXPANDED_TOP_OFFSET_PX;
                 const newHeight = window.innerHeight - TIMELINE_EXPANDED_TOP_OFFSET_PX - TIMELINE_EXPANDED_BOTTOM_OFFSET_PX;
-                $navigatorRoot.css({ 'top': newTop + 'px', 'height': newHeight + 'px' });
+                navigatorRoot.style.top = newTop + 'px'; // Use vanilla JS
+                navigatorRoot.style.height = newHeight + 'px'; // Use vanilla JS
             } else {
-                $navigatorRoot.css({ 'top': TIMELINE_DEFAULT_TOP_VH + 'vh', 'height': TIMELINE_DEFAULT_HEIGHT_VH + 'vh' });
+                navigatorRoot.style.top = TIMELINE_DEFAULT_TOP_VH + 'vh'; // Use vanilla JS
+                navigatorRoot.style.height = TIMELINE_DEFAULT_HEIGHT_VH + 'vh'; // Use vanilla JS
             }
 
             if (timeline_messages.length > 0 && timeline_chatScrollContainer && timeline_chatScrollContainer.length && timeline_chatScrollContainer.get(0).isConnected) {
-                $navigatorRoot.removeClass('hidden');
+                navigatorRoot.classList.remove('hidden'); // Use vanilla JS
             } else {
-                $navigatorRoot.addClass('hidden');
+                navigatorRoot.classList.add('hidden'); // Use vanilla JS
             }
         }
 
-        $('div[id^="' + TIMELINE_HTML_ID_PREFIX + '"]').each(function(index) {
+        document.querySelectorAll(`div[id^="${TIMELINE_HTML_ID_PREFIX}"]`).forEach((el, index) => { // Use vanilla JS
             if (index >= numSidebars) {
-                $(this).addClass('hidden');
+                el.classList.add('hidden');
             }
         });
-        if (numSidebars > 0) debugLog(`Timeline updated: ${numSidebars} sidebar(s) positioned.`);
+        // if (numSidebars > 0) debugLog(`Timeline updated: ${numSidebars} sidebar(s) positioned.`); // Less verbose
     }
 
+    function generateMessagesIdsHash(messagesArray) { // OPTIMIZED: Helper for hash
+        if (!messagesArray || messagesArray.length === 0) return "";
+        return messagesArray.map(msg => msg.id).join(',');
+    }
 
-    function timeline_findChatElements() {
+    function timeline_findChatElements() { // OPTIMIZED: With ID hashing
         timeline_chatScrollContainer = $('#thread div.flex.h-full.flex-col.overflow-y-auto[class*="scrollbar-gutter:stable_both-edges"]').first();
         if (!timeline_chatScrollContainer || !timeline_chatScrollContainer.length) {
              timeline_chatScrollContainer = $('div.flex.h-full.flex-col.overflow-y-auto').first();
         }
+
         if (!timeline_chatScrollContainer || !timeline_chatScrollContainer.length || !timeline_chatScrollContainer.get(0).isConnected) {
             debugLog('Timeline - Chat scroll container not found/connected.');
-            if (timeline_messages.length > 0) { timeline_messages = []; return true; }
-            timeline_messages = []; return false;
+            if (timeline_messages.length > 0) { // Had messages, now none
+                timeline_messages = [];
+                timeline_messages_ids_hash = "";
+                return true;
+            }
+            timeline_messages_ids_hash = ""; // Ensure hash is clear if no messages
+            return false; // No messages before, still no messages
         }
         timeline_chatScrollContainerTop = timeline_chatScrollContainer.get(0).getBoundingClientRect().top;
+
         const messageArticles = timeline_chatScrollContainer.find('article[data-testid^="conversation-turn-"]');
         const newMessages = messageArticles.toArray().map(articleEl => {
             const $article = $(articleEl);
             const $messageDiv = $article.find('div[data-message-id]').first();
-            let role = 'user';
-            if ($article.find('div[data-message-author-role="assistant"]').length > 0) role = 'assistant';
-            else if ($article.find('div[data-message-author-role="user"]').length > 0) role = 'user';
+            let role = 'user'; // Default role
+            // Determine role based on author divs within the article
+            if ($article.find('div[data-message-author-role="assistant"]').length > 0) {
+                role = 'assistant';
+            } else if ($article.find('div[data-message-author-role="user"]').length > 0) {
+                role = 'user';
+            }
             return { element: $messageDiv, role: role, id: $messageDiv.attr('data-message-id') };
         }).filter(msg => msg.element && msg.element.length > 0 && msg.id);
 
-        if (newMessages.length !== timeline_messages.length || timeline_messages.some((oldMsg, idx) => oldMsg.id !== newMessages[idx]?.id)) {
-            timeline_messages = newMessages;
-            debugLog('Timeline - Message structure updated.', timeline_messages.length, 'messages found.');
-            return true;
+        const newIdsHash = generateMessagesIdsHash(newMessages);
+
+        if (newIdsHash === timeline_messages_ids_hash) {
+            // IDs and their order are the same. We only need to update element references if they were re-rendered.
+            if (newMessages.length === timeline_messages.length) {
+                let elementsChanged = false;
+                for(let i=0; i < newMessages.length; i++) {
+                    // Compare actual DOM elements. jQuery's .get(0) retrieves the DOM element.
+                    if (!timeline_messages[i] || !timeline_messages[i].element || !newMessages[i].element ||
+                        timeline_messages[i].element.get(0) !== newMessages[i].element.get(0)) {
+                        timeline_messages[i].element = newMessages[i].element; // Update jQuery object reference
+                        elementsChanged = true;
+                    }
+                    // Update role too, just in case, though less likely to change if ID is same
+                    if (timeline_messages[i] && timeline_messages[i].role !== newMessages[i].role) {
+                        timeline_messages[i].role = newMessages[i].role;
+                        elementsChanged = true;
+                    }
+                }
+                if (elementsChanged) {
+                    debugLog('Timeline - Message elements/roles updated (same IDs).');
+                    return true; // Indicates a change that might require re-observing for IntersectionObserver
+                }
+            } else {
+                 // Hash is same but length differs. This implies an issue or an edge case.
+                 // Fallback to full update for safety.
+                 timeline_messages = newMessages;
+                 timeline_messages_ids_hash = newIdsHash;
+                 debugLog('Timeline - Message structure updated (hash matched but length differed - unexpected).', timeline_messages.length);
+                 return true;
+            }
+            return false; // No change in IDs or underlying elements.
         }
-        return false;
+
+        // Hash is different, or it's the first run, or lengths didn't match.
+        timeline_messages = newMessages;
+        timeline_messages_ids_hash = newIdsHash;
+        debugLog('Timeline - Message structure updated (ID hash changed or significant diff).', timeline_messages.length, 'messages found.');
+        return true;
     }
 
-    function timeline_renderDots() {
+
+    function timeline_renderDots() { // OPTIMIZED: Uses Vanilla JS for dot creation
         if (timeline_intersectionObserver) { timeline_intersectionObserver.disconnect(); }
 
         const { numSidebars, messagesPerEffectiveSidebar } = _getTimelineLayoutConfig();
-        timeline_ensureSidebarDivs(numSidebars);
+        timeline_ensureSidebarDivs(numSidebars); // Uses Vanilla JS
 
         if (numSidebars === 0) {
-            $('div[id^="' + TIMELINE_HTML_ID_PREFIX + '"] .cgpt-dots').empty();
+            document.querySelectorAll(`div[id^="${TIMELINE_HTML_ID_PREFIX}"] .cgpt-dots`).forEach(ul => ul.innerHTML = '');
             timeline_updateTimelinePositionAndVisibility();
             return;
         }
@@ -602,12 +694,12 @@
         debugLog(`Timeline - Rendering dots for ${numSidebars} sidebar(s), ~${messagesPerEffectiveSidebar} messages/sidebar.`);
 
         for (let s = 0; s < numSidebars; s++) {
-            const $dotsUl = $(`#${TIMELINE_HTML_ID_PREFIX}${s} .cgpt-dots`);
-            if (!$dotsUl.length) {
+            const dotsUl = document.querySelector(`#${TIMELINE_HTML_ID_PREFIX}${s} .cgpt-dots`);
+            if (!dotsUl) {
                 debugWarn(`Timeline - Dots UL not found for sidebar ${s}`);
                 continue;
             }
-            $dotsUl.empty();
+            dotsUl.innerHTML = ''; // Clear existing dots
 
             const startIndex = s * messagesPerEffectiveSidebar;
             const endIndex = Math.min(startIndex + messagesPerEffectiveSidebar, timeline_messages.length);
@@ -617,13 +709,13 @@
                 const msgData = timeline_messages[i];
                 const localIndex = i - startIndex;
 
-                const li = $('<li/>').addClass(msgData.role === 'assistant' ? 'assistant' : 'user')
-                                   .attr('data-idx', i)
-                                   .attr('title', `הודעה ${i+1} (${msgData.role})`);
-
+                const li = document.createElement('li');
+                li.classList.add(msgData.role === 'assistant' ? 'assistant' : 'user');
+                li.setAttribute('data-idx', String(i));
+                li.setAttribute('title', `הודעה ${i+1} (${msgData.role})`);
 
                 if (i === 0 || i === timeline_messages.length - 1) {
-                    li.addClass('endpoint-number');
+                    li.classList.add('endpoint-number');
                 }
 
                 let topPercentage = 0;
@@ -632,80 +724,104 @@
                 } else if (numMessagesInThisSidebar > 1) {
                     topPercentage = (localIndex / (numMessagesInThisSidebar - 1)) * 100;
                 }
-                li.css('top', topPercentage + '%').append($(`<span>${i+1}</span>`));
-                $dotsUl.append(li);
+                li.style.top = topPercentage + '%';
+                const span = document.createElement('span');
+                span.textContent = String(i+1);
+                li.appendChild(span);
+                dotsUl.appendChild(li);
             }
         }
         timeline_updateTimelinePositionAndVisibility();
-        timeline_updateTimelineState(false);
+        timeline_updateTimelineState(false); // Pass false as it's not a direct scroll event
         if (pageVisible && currentSettings.enableTimelineSidebar) { timeline_setupIntersectionObserver(); }
     }
 
-
     function timeline_updateTimelineState(isScrollingEvent = true) {
         const { numSidebars, messagesPerEffectiveSidebar } = _getTimelineLayoutConfig();
-        const $allDotsLi = $(`div[id^="${TIMELINE_HTML_ID_PREFIX}"] .cgpt-dots li`);
+        // Query all LIs across all sidebars at once
+        const allDotsLi = document.querySelectorAll(`div[id^="${TIMELINE_HTML_ID_PREFIX}"] .cgpt-dots li`);
+
 
         if (timeline_messages.length === 0 || !timeline_chatScrollContainer || !timeline_chatScrollContainer.length || !timeline_chatScrollContainer.get(0).isConnected || numSidebars === 0) {
-            $allDotsLi.removeClass('active');
+            allDotsLi.forEach(li => li.classList.remove('active'));
             timeline_currentMessageIndex = -1; return;
         }
+        // Ensure timeline_chatScrollContainerTop is up-to-date
         timeline_chatScrollContainerTop = timeline_chatScrollContainer.get(0).getBoundingClientRect().top;
+
         const containerScrollTop = timeline_chatScrollContainer.scrollTop(), containerVisibleHeight = timeline_chatScrollContainer.innerHeight();
         let bestMatchIndex = -1, smallestPositiveOffset = Infinity;
-        const visibilityThreshold = 0.3;
+        const visibilityThreshold = 0.3; // Portion of message that needs to be visible
 
         for (let i = 0; i < timeline_messages.length; i++) {
             const msg = timeline_messages[i].element; if (!msg || !msg.length) continue;
             const msgDomElement = msg.get(0); if (!msgDomElement || !msgDomElement.isConnected) continue;
+
             const msgRect = msgDomElement.getBoundingClientRect(), msgHeight = msgRect.height; if (msgHeight === 0) continue;
-            const msgTopRel = msgRect.top - timeline_chatScrollContainerTop, msgBottomRel = msgTopRel + msgHeight;
+
+            const msgTopRel = msgRect.top - timeline_chatScrollContainerTop; // Position relative to scroll container's viewport
+            const msgBottomRel = msgTopRel + msgHeight;
+
+            // Calculate visible portion of the message within the container's viewport
             const visibleHeightInContainer = Math.min(containerVisibleHeight, msgBottomRel) - Math.max(0, msgTopRel);
             const visiblePortion = visibleHeightInContainer / msgHeight;
+
             if (visiblePortion >= visibilityThreshold) {
+                // This message is sufficiently visible
                 if (msgTopRel >= -(msgHeight * (1 - visibilityThreshold)) && msgTopRel < smallestPositiveOffset) {
+                     // Prefer messages that are at the top of the viewport or just scrolled past the top
                      smallestPositiveOffset = msgTopRel; bestMatchIndex = i;
-                } else if (bestMatchIndex === -1) { bestMatchIndex = i; }
+                } else if (bestMatchIndex === -1) {
+                    // Fallback if no message is at/near the top
+                    bestMatchIndex = i;
+                }
             }
         }
+        // Fallback logic if no message meets the primary criteria
         if (bestMatchIndex === -1 && timeline_messages.length > 0) {
+            // Try to keep current active if it's still somewhat visible
             if (timeline_currentMessageIndex !== -1 && timeline_currentMessageIndex < timeline_messages.length) {
                  const prevMsgEl = timeline_messages[timeline_currentMessageIndex].element.get(0);
                  if (prevMsgEl && prevMsgEl.isConnected) {
                     const prevRect = prevMsgEl.getBoundingClientRect();
                     if ((prevRect.top - timeline_chatScrollContainerTop + prevRect.height) > 0 && (prevRect.top - timeline_chatScrollContainerTop) < containerVisibleHeight) {
-                        bestMatchIndex = timeline_currentMessageIndex;
+                        bestMatchIndex = timeline_currentMessageIndex; // Keep current
                     }
                  }
             }
-            if (bestMatchIndex === -1) {
-                if (containerScrollTop <= 10) bestMatchIndex = 0;
-                else if (containerScrollTop + containerVisibleHeight >= timeline_chatScrollContainer.get(0).scrollHeight - 20) bestMatchIndex = timeline_messages.length - 1;
-                else bestMatchIndex = (timeline_currentMessageIndex >= 0 && timeline_currentMessageIndex < timeline_messages.length) ? timeline_currentMessageIndex : 0;
+            if (bestMatchIndex === -1) { // If still no match
+                if (containerScrollTop <= 10) bestMatchIndex = 0; // Scrolled to top
+                else if (containerScrollTop + containerVisibleHeight >= timeline_chatScrollContainer.get(0).scrollHeight - 20) bestMatchIndex = timeline_messages.length - 1; // Scrolled to bottom
+                else bestMatchIndex = (timeline_currentMessageIndex >= 0 && timeline_currentMessageIndex < timeline_messages.length) ? timeline_currentMessageIndex : 0; // Default or keep
             }
         }
+
         bestMatchIndex = timeline_messages.length > 0 ? Math.max(0, Math.min(bestMatchIndex, timeline_messages.length - 1)) : -1;
 
-        if (bestMatchIndex !== -1 && (timeline_currentMessageIndex !== bestMatchIndex || $allDotsLi.filter('.active').length === 0) ) {
+        let activeDotExists = false;
+        allDotsLi.forEach(li => { if (li.classList.contains('active')) activeDotExists = true; });
+
+
+        if (bestMatchIndex !== -1 && (timeline_currentMessageIndex !== bestMatchIndex || !activeDotExists) ) {
             timeline_currentMessageIndex = bestMatchIndex;
-            $allDotsLi.removeClass('active');
+            allDotsLi.forEach(li => li.classList.remove('active'));
 
             if (messagesPerEffectiveSidebar > 0) {
                 const targetSidebarIndex = Math.floor(timeline_currentMessageIndex / messagesPerEffectiveSidebar);
                 const localIndexInSidebar = timeline_currentMessageIndex % messagesPerEffectiveSidebar;
                  if(targetSidebarIndex < numSidebars){
-                    $(`#${TIMELINE_HTML_ID_PREFIX}${targetSidebarIndex} .cgpt-dots li`).eq(localIndexInSidebar).addClass('active');
+                    // Find the specific li element
+                    const targetLi = document.querySelector(`#${TIMELINE_HTML_ID_PREFIX}${targetSidebarIndex} .cgpt-dots li:nth-child(${localIndexInSidebar + 1})`);
+                    if (targetLi) targetLi.classList.add('active');
                 } else {
                     debugWarn(`Timeline - Calculated targetSidebarIndex ${targetSidebarIndex} is out of bounds for ${numSidebars} sidebars.`);
                 }
             }
-        } else if (bestMatchIndex === -1 && timeline_currentMessageIndex !== -1) {
-
-            $allDotsLi.removeClass('active');
+        } else if (bestMatchIndex === -1 && timeline_currentMessageIndex !== -1) { // No message is a good candidate, clear active
+            allDotsLi.forEach(li => li.classList.remove('active'));
             timeline_currentMessageIndex = -1;
         }
     }
-
 
     function timeline_setupIntersectionObserver(){
         if (!pageVisible || !currentSettings.enableTimelineSidebar) {
@@ -714,11 +830,13 @@
         }
         if (!('IntersectionObserver' in window)) { debugWarn("Timeline - IntersectionObserver not supported."); return; }
         if (timeline_intersectionObserver) timeline_intersectionObserver.disconnect();
+
         const rootEl = timeline_chatScrollContainer && timeline_chatScrollContainer.length ? timeline_chatScrollContainer.get(0) : null;
         if (!rootEl || timeline_messages.length === 0) {
-            debugLog("Timeline - IO not setup (no root scroll container or no messages)."); return;
+            // debugLog("Timeline - IO not setup (no root scroll container or no messages)."); // Less verbose
+            return;
         }
-        const io_options = { root: rootEl, rootMargin: '0px', threshold: 0.35 };
+        const io_options = { root: rootEl, rootMargin: '0px', threshold: 0.35 }; // Threshold might need adjustment
         timeline_intersectionObserver = new IntersectionObserver((entries) => {
             if(!pageVisible || !currentSettings.enableTimelineSidebar) return;
             let bestEntry = null;
@@ -732,17 +850,23 @@
             if (bestEntry) {
                  const idx = parseInt(bestEntry.target.getAttribute('data-cgpt-idx'));
                  if (!isNaN(idx) && idx < timeline_messages.length) {
-                    const $allDotsLi = $(`div[id^="${TIMELINE_HTML_ID_PREFIX}"] .cgpt-dots li`);
-                    if (idx !== timeline_currentMessageIndex || !$allDotsLi.filter('.active').length) {
+                    let activeDotNeedsUpdate = false;
+                    const currentActiveDot = document.querySelector(`div[id^="${TIMELINE_HTML_ID_PREFIX}"] .cgpt-dots li.active`);
+                    if (!currentActiveDot || (currentActiveDot && parseInt(currentActiveDot.getAttribute('data-idx')) !== idx)) {
+                        activeDotNeedsUpdate = true;
+                    }
+
+                    if (idx !== timeline_currentMessageIndex || activeDotNeedsUpdate) {
                         timeline_currentMessageIndex = idx;
-                        $allDotsLi.removeClass('active');
+                        document.querySelectorAll(`div[id^="${TIMELINE_HTML_ID_PREFIX}"] .cgpt-dots li`).forEach(li => li.classList.remove('active'));
 
                         const { messagesPerEffectiveSidebar, numSidebars } = _getTimelineLayoutConfig();
                         if (messagesPerEffectiveSidebar > 0) {
                             const targetSidebarIndex = Math.floor(idx / messagesPerEffectiveSidebar);
                             const localIndexInSidebar = idx % messagesPerEffectiveSidebar;
                             if(targetSidebarIndex < numSidebars){
-                                $(`#${TIMELINE_HTML_ID_PREFIX}${targetSidebarIndex} .cgpt-dots li`).eq(localIndexInSidebar).addClass('active');
+                                const targetLi = document.querySelector(`#${TIMELINE_HTML_ID_PREFIX}${targetSidebarIndex} .cgpt-dots li:nth-child(${localIndexInSidebar + 1})`);
+                                if (targetLi) targetLi.classList.add('active');
                             } else {
                                 debugWarn(`Timeline IO - Calculated targetSidebarIndex ${targetSidebarIndex} is out of bounds for ${numSidebars} sidebars.`);
                             }
@@ -751,10 +875,11 @@
                  }
             }
         }, io_options);
+
         timeline_messages.forEach((msgData, i) => {
             if (msgData.element && msgData.element.length && msgData.element.get(0)) {
                 const domEl = msgData.element.get(0);
-                domEl.setAttribute('data-cgpt-idx', i.toString());
+                domEl.setAttribute('data-cgpt-idx', i.toString()); // Ensure IO can map back to index
                 timeline_intersectionObserver.observe(domEl);
             }
         });
@@ -767,22 +892,24 @@
             if (messageEl && messageEl.length && messageEl.get(0) && messageEl.get(0).isConnected && timeline_chatScrollContainer && timeline_chatScrollContainer.length) {
                 const messageDomElement = messageEl.get(0);
                 const scrollContainerElement = timeline_chatScrollContainer.get(0);
+
+                // Update timeline_chatScrollContainerTop before calculating relative offset
                 timeline_chatScrollContainerTop = scrollContainerElement.getBoundingClientRect().top;
                 const messageRectTop = messageDomElement.getBoundingClientRect().top;
                 const offsetRelativeToContainerViewport = messageRectTop - timeline_chatScrollContainerTop;
                 const targetScrollTop = scrollContainerElement.scrollTop + offsetRelativeToContainerViewport;
 
-
-                const $allDotsLi = $(`div[id^="${TIMELINE_HTML_ID_PREFIX}"] .cgpt-dots li`);
-                if (timeline_currentMessageIndex !== index || !$allDotsLi.filter('.active').length) {
+                // Update active dot immediately
+                if (timeline_currentMessageIndex !== index) {
                     timeline_currentMessageIndex = index;
-                    $allDotsLi.removeClass('active');
+                    document.querySelectorAll(`div[id^="${TIMELINE_HTML_ID_PREFIX}"] .cgpt-dots li`).forEach(li => li.classList.remove('active'));
                     const { messagesPerEffectiveSidebar, numSidebars } = _getTimelineLayoutConfig();
                      if (messagesPerEffectiveSidebar > 0) {
                         const targetSidebarIndex = Math.floor(index / messagesPerEffectiveSidebar);
                         const localIndexInSidebar = index % messagesPerEffectiveSidebar;
                         if(targetSidebarIndex < numSidebars){
-                            $(`#${TIMELINE_HTML_ID_PREFIX}${targetSidebarIndex} .cgpt-dots li`).eq(localIndexInSidebar).addClass('active');
+                            const targetLi = document.querySelector(`#${TIMELINE_HTML_ID_PREFIX}${targetSidebarIndex} .cgpt-dots li:nth-child(${localIndexInSidebar + 1})`);
+                            if (targetLi) targetLi.classList.add('active');
                         } else {
                              debugWarn(`Timeline Scroll - Calculated targetSidebarIndex ${targetSidebarIndex} is out of bounds for ${numSidebars} sidebars.`);
                         }
@@ -791,102 +918,120 @@
 
                 if ('scrollTo' in scrollContainerElement && typeof scrollContainerElement.scrollTo === 'function') {
                     scrollContainerElement.scrollTo({ top: targetScrollTop, behavior: smooth ? 'smooth' : 'auto' });
-                } else {
+                } else { // Fallback for older browsers or if jQuery animation is preferred
                     $(scrollContainerElement).stop().animate({ scrollTop: targetScrollTop }, smooth ? 300 : 0);
                 }
                 debugLog(`Timeline - Scrolled to message index: ${index}`);
             } else {
                 debugWarn(`Timeline - Message element at index ${index} not found/connected or scroll container missing. Re-evaluating elements.`);
-                if(timeline_findChatElements()) timeline_renderDots();
+                if(timeline_findChatElements()) timeline_renderDots(); // Re-evaluate and re-render if structure changed
             }
         } else { debugWarn(`Timeline - Invalid index ${index} for scrollToMessage.`); }
     }
 
-
     function timeline_setupDOMObserver() {
         if (timeline_domObserver) timeline_domObserver.disconnect();
-        const observerTargetNode = document.body;
-        debugLog(`Timeline - DOMObserver target: ${observerTargetNode.tagName}`);
+        const observerTargetNode = document.body; // Observing body is broad but robust for dynamic UIs
+        // debugLog(`Timeline - DOMObserver target: ${observerTargetNode.tagName}`); // Less verbose
         timeline_domObserver = new MutationObserver(debounce((mutationsList) => {
             if (!currentSettings.enableTimelineSidebar || !pageVisible) return;
             let refreshNeeded = false;
+
+            // Heuristic: check for mutations that likely affect chat content or layout
             for (const mutation of mutationsList) {
                 if (mutation.target.id === 'root' || mutation.target.tagName === 'MAIN' ||
                     (mutation.target.parentElement && mutation.target.parentElement.id === 'root') ||
-                    $(mutation.target).closest('#thread').length > 0 ||
+                    $(mutation.target).closest('#thread').length > 0 || // jQuery usage here for convenience
                     Array.from(mutation.addedNodes).some(node => $(node).closest('#thread').length > 0 || (node.id === 'thread') || (node.nodeType === 1 && $(node).find('#thread').length > 0)) ||
                     Array.from(mutation.removedNodes).some(node => $(node).closest('#thread').length > 0 || (node.id === 'thread'))) {
                      refreshNeeded = true; break;
                 }
+                // If chat container itself is not found yet, any childList change might reveal it
                 if ((!timeline_chatScrollContainer || !timeline_chatScrollContainer.length) &&
                     (mutation.type === 'childList' && (mutation.addedNodes.length || mutation.removedNodes.length))) {
                      refreshNeeded = true; break;
                 }
-
+                // If a timeline sidebar was externally removed
                 if (mutation.type === 'childList' && Array.from(mutation.removedNodes).some(node => node.nodeType === 1 && node.id && node.id.startsWith(TIMELINE_HTML_ID_PREFIX))) {
                     debugLog("Timeline DOMObserver: A timeline sidebar was removed, flagging for refresh.");
                     refreshNeeded = true; break;
                 }
             }
+
             if (refreshNeeded) {
-                debugLog("Timeline DOMObserver: Detected relevant DOM change.");
-                const messagesHaveChangedStructurally = timeline_findChatElements();
-                if (messagesHaveChangedStructurally || $(`div[id^="${TIMELINE_HTML_ID_PREFIX}"]`).length === 0 && timeline_messages.length > 0) {
+                // debugLog("Timeline DOMObserver: Detected relevant DOM change."); // Less verbose
+                const messagesHaveChangedStructurally = timeline_findChatElements(); // This is now more efficient
+
+                if (messagesHaveChangedStructurally || (document.querySelectorAll(`div[id^="${TIMELINE_HTML_ID_PREFIX}"]`).length === 0 && timeline_messages.length > 0) ) {
                     debugLog("Timeline DOMObserver: Message structure changed or sidebars missing. Re-rendering dots.");
                     const oldIndex = timeline_currentMessageIndex;
-                    timeline_currentMessageIndex = -1;
+                    timeline_currentMessageIndex = -1; // Force re-evaluation of active dot
                     timeline_renderDots();
-                    if (DEBUG && oldIndex !== -1) console.log("Timeline DOMObserver: currentMessageIndex reset due to structural change.");
-                } else if (timeline_messages.length > 0 && !$(`div[id^="${TIMELINE_HTML_ID_PREFIX}"] .cgpt-dots li.active`).length) {
-                    debugLog("Timeline DOMObserver: No active dot, attempting to update state based on calculation.");
-                    timeline_updateTimelineState(false);
-                } else if (timeline_messages.length === 0 && $(`div[id^="${TIMELINE_HTML_ID_PREFIX}"] .cgpt-dots li`).length > 0) {
+                    // if (DEBUG && oldIndex !== -1) console.log("Timeline DOMObserver: currentMessageIndex reset due to structural change."); // Less verbose
+                } else if (timeline_messages.length > 0 && !document.querySelector(`div[id^="${TIMELINE_HTML_ID_PREFIX}"] .cgpt-dots li.active`)) {
+                    // debugLog("Timeline DOMObserver: No active dot, attempting to update state based on calculation."); // Less verbose
+                    timeline_updateTimelineState(false); // Try to set an active dot if messages exist
+                } else if (timeline_messages.length === 0 && document.querySelectorAll(`div[id^="${TIMELINE_HTML_ID_PREFIX}"] .cgpt-dots li`).length > 0) {
                     debugLog("Timeline DOMObserver: Messages cleared, re-rendering to remove dots.");
-                    timeline_renderDots();
+                    timeline_renderDots(); // Clear dots
                 } else {
-
+                    // No structural message change, but other refresh might have triggered.
+                    // Just ensure positions are correct.
                     timeline_updateTimelinePositionAndVisibility();
                 }
             }
-        }, 500));
+        }, 500)); // 500ms debounce
+
         if (pageVisible && currentSettings.enableTimelineSidebar) {
             try { timeline_domObserver.observe(observerTargetNode, { childList: true, subtree: true }); } catch (e) { debugWarn("Timeline DOMObserver: Already observing or error.", e); }
         }
         debugLog("Timeline - DOMObserver attached (if page visible and feature enabled).");
     }
 
+
     function timeline_setupResizeObserver() {
         if (timeline_mainElementResizeObserver) timeline_mainElementResizeObserver.disconnect();
-        const mainEl = $('main').get(0);
+        const mainEl = document.querySelector('main'); // Use vanilla JS
         const windowEl = window;
 
         const debouncedUpdate = debounce(timeline_updateTimelinePositionAndVisibility, 200);
 
         if (mainEl) {
             timeline_mainElementResizeObserver = new ResizeObserver(debouncedUpdate);
-            timeline_mainElementResizeObserver.observe(mainEl);
-            debugLog("Timeline - ResizeObserver attached to 'main'.");
+            try { // Add try-catch for observe
+                timeline_mainElementResizeObserver.observe(mainEl);
+                debugLog("Timeline - ResizeObserver attached to 'main'.");
+            } catch (e) {
+                debugWarn("Timeline - Failed to observe 'main' with ResizeObserver.", e);
+                timeline_mainElementResizeObserver = null; // Nullify if observe failed
+            }
         } else {
              debugWarn("Timeline - 'main' not found for ResizeObserver.");
         }
-        $(windowEl).off('resize.cgpttimeline').on('resize.cgpttimeline', debouncedUpdate);
+        $(windowEl).off('resize.cgpttimeline').on('resize.cgpttimeline', debouncedUpdate); // Keep jQuery for window resize for simplicity
         debugLog("Timeline - Attached to window resize event.");
     }
 
     function timeline_cleanup() {
         debugLog('Timeline - Cleaning up...');
-        timeline_ensureSidebarDivs(0);
-        $(`#${TIMELINE_CSS_ID}`).remove();
+        timeline_ensureSidebarDivs(0); // Uses Vanilla JS
+        const cssEl = document.getElementById(TIMELINE_CSS_ID);
+        if (cssEl) cssEl.remove();
+
         if (timeline_domObserver) { timeline_domObserver.disconnect(); timeline_domObserver = null; }
         if (timeline_mainElementResizeObserver) { timeline_mainElementResizeObserver.disconnect(); timeline_mainElementResizeObserver = null; }
         if (timeline_intersectionObserver) { timeline_intersectionObserver.disconnect(); timeline_intersectionObserver = null; }
         $(window).off('resize.cgpttimeline');
-        $(document.body).off('click.cgptTimelineDots');
+        // $(document.body).off('click.cgptTimelineDots'); // Keep using jQuery for this delegated event for simplicity
+        // For full vanilla, would need to replace how this is attached in initializeActualTimelineLogic
+
         timeline_messages = [];
+        timeline_messages_ids_hash = ""; // Reset hash
         timeline_currentMessageIndex = -1;
         timeline_initialized = false;
         debugLog('Timeline - Cleanup complete.');
     }
+
 
     function initializeActualTimelineLogic() {
         if (!pageVisible || !currentSettings.enableTimelineSidebar) {
@@ -895,28 +1040,27 @@
         }
         debugLog('Timeline - Attempting actual initialization...');
 
-        timeline_injectCSS_local();
+        timeline_injectCSS_local(); // Injects CSS
 
-
+        // Using jQuery for delegated event for simplicity, as it's already a dependency.
         $(document.body).off('click.cgptTimelineDots').on('click.cgptTimelineDots', `div[id^="${TIMELINE_HTML_ID_PREFIX}"] .cgpt-dots li`, function(e){
-            e.stopPropagation();
-            const idx = parseInt($(this).attr('data-idx'));
+            e.stopPropagation(); // Prevent event bubbling
+            const idx = parseInt($(this).attr('data-idx')); // jQuery to get attribute
             if (!isNaN(idx)) {
                 debugLog(`Timeline - Dot clicked, global index: ${idx}`);
-                timeline_scrollToMessage(idx, true);
+                timeline_scrollToMessage(idx, true); // Scroll to the message
             }
         });
         debugLog('Timeline - Delegated click listener for dots attached to document.body.');
 
-        if (timeline_findChatElements() || timeline_messages.length === 0) {
-            timeline_renderDots();
+        if (timeline_findChatElements() || timeline_messages.length === 0) { // Find initial messages
+            timeline_renderDots(); // Render timeline dots based on messages
         }
-        timeline_setupDOMObserver();
-        timeline_setupResizeObserver();
+        timeline_setupDOMObserver(); // Observe DOM for changes
+        timeline_setupResizeObserver(); // Observe resizing of main element/window
         timeline_initialized = true;
         debugLog("Timeline - Initialized successfully.");
     }
-
 
     function initializeTimelineFeatureWrapper() {
         if (currentSettings.enableTimelineSidebar) {
@@ -929,33 +1073,34 @@
                 }
             } else {
                  debugLog('Timeline - Feature enabled, already initialized. Ensuring setup and visibility.');
-                 timeline_injectCSS_local();
-                 if (timeline_findChatElements() || $(`div[id^="${TIMELINE_HTML_ID_PREFIX}"]`).length === 0 && timeline_messages.length > 0) {
+                 timeline_injectCSS_local(); // Ensure CSS is present
+                 // Re-evaluate messages and render if necessary, or just update positions
+                 if (timeline_findChatElements() || (document.querySelectorAll(`div[id^="${TIMELINE_HTML_ID_PREFIX}"]`).length === 0 && timeline_messages.length > 0) ) {
                     timeline_renderDots();
                  } else {
                     timeline_updateTimelinePositionAndVisibility();
                  }
-                 if (pageVisible) {
+                 if (pageVisible) { // Ensure observers are active if page is visible
                     if (!timeline_domObserver) timeline_setupDOMObserver();
-                    else { try { timeline_domObserver.observe(document.body, { childList: true, subtree: true }); } catch(e) {} }
+                    else { try { timeline_domObserver.observe(document.body, { childList: true, subtree: true }); } catch(e) { /* already observing or error */ } }
 
-                    const mainEl = $('main').get(0);
+                    const mainEl = document.querySelector('main');
                     if (!timeline_mainElementResizeObserver && mainEl) timeline_setupResizeObserver();
-                    else if (mainEl) { try {timeline_mainElementResizeObserver.observe(mainEl);} catch(e){} }
+                    else if (timeline_mainElementResizeObserver && mainEl) { try {timeline_mainElementResizeObserver.observe(mainEl);} catch(e){/* already observing or error */} }
 
-                    timeline_setupIntersectionObserver();
+                    timeline_setupIntersectionObserver(); // Setup or re-setup intersection observer
                  }
             }
         } else {
             debugLog('Timeline - Feature disabled by settings. Cleaning up...');
-            timeline_cleanup();
+            timeline_cleanup(); // Cleanup if feature is disabled
         }
     }
 
     // --- Settings Dialog ---
     function openSettingsDialog() {
         const DIALOG_ID = 'chatgpt-userscript-settings-dialog';
-        let dialog = document.getElementById(DIALOG_ID);
+        let dialog = document.getElementById(DIALOG_ID); // Cache this element
         if (dialog) {
             if (isDarkModeActive()) dialog.classList.add('cgpt-settings-dark');
             else dialog.classList.remove('cgpt-settings-dark');
@@ -995,16 +1140,24 @@
                 GM_setValue(SETTINGS_KEYS.enableCopyButton, currentSettings.enableCopyButton);
                 GM_setValue(SETTINGS_KEYS.enableHidePlansButton, currentSettings.enableHidePlansButton);
                 GM_setValue(SETTINGS_KEYS.enableTimelineSidebar, currentSettings.enableTimelineSidebar);
-                dialog.style.display = 'none';
-                alert('ההגדרות נשמרו. חלק מהשינויים עשויים לדרוש רענון דף.');
+
+                const currentDialog = document.getElementById(DIALOG_ID); // Re-fetch in case it was removed
+                if(currentDialog) currentDialog.style.display = 'none';
+
+                GM_notification({ title: 'הגדרות נשמרו', text: 'חלק מהשינויים עשויים לדרוש רענון דף.', silent: true, timeout: 4000 }); // Use GM_notification instead of alert
+
                 applyStylesOnLoad();
                 initializeCopyButtonFeature();
                 initializeHidePlansFeature();
                 initializeTimelineFeatureWrapper();
                 debugLog("Settings saved and features re-initialized.");
             });
-            document.getElementById('settings-cancel-button').addEventListener('click', () => { dialog.style.display = 'none'; });
+            document.getElementById('settings-cancel-button').addEventListener('click', () => {
+                const currentDialog = document.getElementById(DIALOG_ID);
+                if(currentDialog) currentDialog.style.display = 'none';
+            });
         }
+        // Populate checkboxes with current settings
         document.getElementById('setting-enable-styling').checked = currentSettings.enableStyling;
         document.getElementById('setting-enable-copy-button').checked = currentSettings.enableCopyButton;
         document.getElementById('setting-enable-hide-plans').checked = currentSettings.enableHidePlansButton;
@@ -1021,28 +1174,29 @@
             for (const mutation of mutationsList) {
                 if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
                     debugLog('HTML class attribute changed. Re-applying styles for dark mode check.');
-                    applyStylesOnLoad();
+                    applyStylesOnLoad(); // Re-apply all dynamic styles
                     if (currentSettings.enableTimelineSidebar && timeline_initialized) {
-                        timeline_injectCSS_local();
-                        timeline_updateTimelinePositionAndVisibility();
+                        timeline_injectCSS_local(); // Re-inject timeline specific CSS (dark/light mode vars)
+                        timeline_updateTimelinePositionAndVisibility(); // Adjust positions if needed
                     }
+                    // Update settings dialog theme if open
                     const settingsDialog = document.getElementById('chatgpt-userscript-settings-dialog');
                     if (settingsDialog && settingsDialog.style.display === 'block') {
                         if (isDarkModeActive()) settingsDialog.classList.add('cgpt-settings-dark');
                         else settingsDialog.classList.remove('cgpt-settings-dark');
                     }
-                    return;
+                    return; // Only need to process one relevant mutation
                 }
             }
         });
-        themeWatcherObserver.observe(htmlElement, { attributes: true });
+        themeWatcherObserver.observe(htmlElement, { attributes: true, attributeFilter: ['class'] }); // More specific filter
         debugLog('Theme watcher initialized on <html> element.');
     }
 
     // --- Main Initialization ---
     function main() {
         loadSettings();
-        applyStylesOnLoad();
+        applyStylesOnLoad(); // Initial style application
         initializeCopyButtonFeature();
         initializeHidePlansFeature();
         initializeTimelineFeatureWrapper();
@@ -1053,49 +1207,53 @@
             const oldPageVisible = pageVisible;
             pageVisible = !document.hidden;
             debugLog(`Page visibility changed to: ${pageVisible}`);
-            if (pageVisible && !oldPageVisible) {
 
+            if (pageVisible && !oldPageVisible) { // Page became visible
+                // Re-activate or ensure observers are running for enabled features
                 if (currentSettings.enableCopyButton) {
                      if (!copyButtonObserver && document.querySelector(ACTIONS_CONTAINER_SELECTOR)) attemptToSetupCopyButtonObserver();
-                     else if (copyButtonObserver && document.querySelector(ACTIONS_CONTAINER_SELECTOR)) { try { copyButtonObserver.observe(document.querySelector(ACTIONS_CONTAINER_SELECTOR), { childList: true, subtree: true }); } catch(e) {} }
-                     if (window.__cgptCopyBtnBodyObserver) { try { window.__cgptCopyBtnBodyObserver.observe(document.body, { childList: true, subtree: true }); } catch(e) {} }
+                     else if (copyButtonObserver && document.querySelector(ACTIONS_CONTAINER_SELECTOR)) { try { copyButtonObserver.observe(document.querySelector(ACTIONS_CONTAINER_SELECTOR), { childList: true, subtree: true }); } catch(e) {/*silent*/} }
+                     if (window.__cgptCopyBtnBodyObserver) { try { window.__cgptCopyBtnBodyObserver.observe(document.body, { childList: true, subtree: true }); } catch(e) {/*silent*/} }
                 }
                 if (currentSettings.enableHidePlansButton) {
-                    findAndHidePlansButton();
-                    if (!hidePlansObserver) initializeHidePlansFeature();
-                    else { try { hidePlansObserver.observe(document.body, { childList: true, subtree: true }); } catch(e) {} }
+                    findAndHidePlansButton(); // Attempt to hide immediately
+                    if (!hidePlansObserver) initializeHidePlansFeature(); // Re-init if null
+                    else { try { hidePlansObserver.observe(document.body, { childList: true, subtree: true }); } catch(e) {/*silent*/} }
                 }
                 if (currentSettings.enableTimelineSidebar) {
                     if (!timeline_initialized) {
-                        initializeTimelineFeatureWrapper();
+                        initializeTimelineFeatureWrapper(); // Full init if not done
                     } else {
-
+                        // Ensure all parts of timeline are active
                         timeline_updateTimelinePositionAndVisibility();
-                        if (timeline_domObserver) { try { timeline_domObserver.observe(document.body, { childList: true, subtree: true }); } catch(e) {} }
+                        if (timeline_domObserver) { try { timeline_domObserver.observe(document.body, { childList: true, subtree: true }); } catch(e) {/*silent*/} }
                         else timeline_setupDOMObserver();
 
-                        const mainEl = $('main').get(0);
-                        if (timeline_mainElementResizeObserver && mainEl) { try { timeline_mainElementResizeObserver.observe(mainEl); } catch(e){} }
+                        const mainEl = document.querySelector('main');
+                        if (timeline_mainElementResizeObserver && mainEl) { try { timeline_mainElementResizeObserver.observe(mainEl); } catch(e){/*silent*/} }
                         else if(mainEl) timeline_setupResizeObserver();
 
-                        timeline_setupIntersectionObserver();
+                        timeline_setupIntersectionObserver(); // Re-setup/re-observe
                     }
                 }
                  debugLog("Features re-checked/re-activated on page visibility.");
-            } else if (!pageVisible && oldPageVisible) {
-                if (copyButtonObserver) { try { copyButtonObserver.disconnect(); } catch(e){} }
-                if (window.__cgptCopyBtnBodyObserver) { try { window.__cgptCopyBtnBodyObserver.disconnect(); } catch(e){} }
-                if (hidePlansObserver) { try { hidePlansObserver.disconnect(); } catch(e){} }
-                if (timeline_domObserver) { try { timeline_domObserver.disconnect(); } catch(e){} }
-
+            } else if (!pageVisible && oldPageVisible) { // Page became hidden
+                // Disconnect observers to save resources
+                if (copyButtonObserver) { try { copyButtonObserver.disconnect(); } catch(e){/*silent*/} }
+                if (window.__cgptCopyBtnBodyObserver) { try { window.__cgptCopyBtnBodyObserver.disconnect(); } catch(e){/*silent*/} }
+                if (hidePlansObserver) { try { hidePlansObserver.disconnect(); } catch(e){/*silent*/} }
+                if (timeline_domObserver) { try { timeline_domObserver.disconnect(); } catch(e){/*silent*/} }
+                if (timeline_mainElementResizeObserver) { // OPTIMIZED: Disconnect ResizeObserver
+                    try { timeline_mainElementResizeObserver.disconnect(); } catch(e) { debugWarn("Failed to disconnect timeline_mainElementResizeObserver on hide", e); }
+                }
                 if (timeline_intersectionObserver) {
-                    timeline_intersectionObserver.disconnect();
+                    try { timeline_intersectionObserver.disconnect(); } catch(e){/*silent*/}
                     debugLog("Timeline IntersectionObserver disconnected due to page hidden.");
                 }
                  debugLog("Some observers disconnected due to page hidden.");
             }
         });
-        debugLog('CombinedScript & Timeline Script v3.1.9 - Fully initialized.');
+        debugLog('CombinedScript & Timeline Script v3.1.9 (Optimized) - Fully initialized.');
     }
 
     if (typeof $ === 'undefined' || typeof $.fn.jquery === 'undefined') {
@@ -1103,8 +1261,10 @@
         if (typeof GM_notification === 'function') GM_notification({ title: 'שגיאת טעינה', text: 'jQuery לא נטען, התוסף לא יפעל.', silent: false, timeout: 10000 });
         return;
     }
+
+    // Wait for document ready, then a slight delay for page to settle
     $(document).ready(function() {
-         setTimeout(main, 750);
+         setTimeout(main, 750); // Delay main execution slightly
     });
 
 })();
