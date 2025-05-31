@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         כלי עזר משולבים וסרגל צד ל-ChatGPT (עם הגדרות v3.1.6 - סרגל דינמי)
+// @name         כלי עזר משולבים וסרגל צד ל-ChatGPT (עם הגדרות v3.1.9 - תיקוני טבלאות ורשימות)
 // @namespace    http://tampermonkey.net/
-// @version      3.1.6
-// @description  משלב עיצוב בועות, RTL, העתקה, הסתרת "תוכניות", וסרגל צד Timeline דינמי, עם התאמה אישית, אופטימיזציות, ותמיכה במצב כהה.
-// @author       Y-PLONI
+// @version      3.1.9
+// @description  משלב עיצוב בועות, RTL, העתקה, הסתרת "תוכניות", וסרגל צד Timeline דינמי מרובה עמודות, עם התאמה אישית, אופטימיזציות, ותמיכה במצב כהה. תיקונים לטבלאות ורשימות.
+// @author       Y-PLONI (שינויים על ידי עוזר AI)
 // @match        *://chatgpt.com/*
 // @match        *://chat.openai.com/*
 // @grant        GM_addStyle
@@ -27,7 +27,7 @@
     const debugWarn = DEBUG ? (...args) => console.warn('[CGPT Script]', ...args) : () => {};
     const debugError = DEBUG ? (...args) => console.error('[CGPT Script]', ...args) : () => {};
 
-    debugLog('ChatGPT Combined Utilities & Timeline Script v3.1.6 - Started');
+    debugLog('ChatGPT Combined Utilities & Timeline Script v3.1.9 - Started');
 
     // --- START: Settings and General Utilities ---
     const SETTINGS_KEYS = {
@@ -140,6 +140,36 @@
                 ${aiMessageContainerSelector} .markdown.prose, ${aiMessageContainerSelector} .text-token-text-primary {
                      color: var(--cgpt-ai-bubble-text) !important;
                 }
+                /* NEW/MODIFIED: Styles for tables and lists inside AI messages */
+                ${aiMessageContainerSelector} .markdown.prose table {
+                    display: block !important;
+                    max-width: 100% !important;
+                    overflow-x: auto !important;
+                    margin-top: 0.5em !important;
+                    margin-bottom: 0.5em !important;
+                    border-collapse: collapse !important; /* Ensures borders are clean */
+                }
+                ${aiMessageContainerSelector} .markdown.prose table th,
+                ${aiMessageContainerSelector} .markdown.prose table td {
+                    padding: 6px 10px !important;
+                    border: 1px solid ${isDarkMode ? '#5A6067' : '#A1C4E5'} !important;
+                    text-align: right !important; /* Ensure table cell content is also RTL */
+                    color: var(--cgpt-ai-bubble-text) !important; /* Ensure text color consistency */
+                }
+                 ${aiMessageContainerSelector} .markdown.prose table th { /* Header specific styling */
+                    background-color: ${isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)'} !important;
+                }
+                ${aiMessageContainerSelector} .markdown.prose ul,
+                ${aiMessageContainerSelector} .markdown.prose ol {
+                    padding-right: 25px !important; /* Increased padding for better spacing from edge */
+                    padding-left: 5px !important;    /* Minimal left padding */
+                    margin-right: 0px !important;  /* Remove default browser margin if any */
+                }
+                ${aiMessageContainerSelector} .markdown.prose li {
+                    text-align: right !important;
+                    margin-bottom: 0.25em !important; /* Spacing between list items */
+                }
+                /* END NEW/MODIFIED */
                 ${aiMessageContainerSelector} > div:first-child { padding-top: 0 !important; }
             `;
         }
@@ -390,7 +420,7 @@
 
     // --- START: Timeline Sidebar Feature ---
     const TIMELINE_CSS_ID = "cgpt-timeline-styles";
-    const TIMELINE_HTML_ID = "cgpt-timeline-root";
+    const TIMELINE_HTML_ID_PREFIX = "cgpt-timeline-root-";
     let timeline_messages = [];
     let timeline_currentMessageIndex = -1;
     let timeline_chatScrollContainer;
@@ -401,16 +431,49 @@
     let timeline_initialized = false;
 
     const TIMELINE_MESSAGE_THRESHOLD_FOR_EXPANSION = 30;
+    const TIMELINE_MAX_MESSAGES_PER_SIDEBAR = 60;
+    const TIMELINE_SIDEBAR_SPACING_PX = 12;
+    const TIMELINE_SIDEBAR_VISUAL_WIDTH_PX = 30;
+
     const TIMELINE_DEFAULT_TOP_VH = 15;
     const TIMELINE_DEFAULT_HEIGHT_VH = 60;
     const TIMELINE_EXPANDED_TOP_OFFSET_PX = 60;
     const TIMELINE_EXPANDED_BOTTOM_OFFSET_PX = 90;
 
 
+    function _getTimelineLayoutConfig() {
+        let numSidebars = 0;
+        if (timeline_messages.length > 0) {
+            numSidebars = Math.ceil(timeline_messages.length / TIMELINE_MAX_MESSAGES_PER_SIDEBAR);
+        }
+        const messagesPerEffectiveSidebar = (numSidebars > 0) ? Math.ceil(timeline_messages.length / numSidebars) : 0;
+        return { numSidebars, messagesPerEffectiveSidebar };
+    }
+
+
+    const getTimelineSidebarHtml = (index) => `<div id="${TIMELINE_HTML_ID_PREFIX}${index}" class="cgpt-timeline-sidebar-instance hidden"><ul class="cgpt-dots"></ul></div>`;
+
+
+    function timeline_ensureSidebarDivs(targetCount) {
+        const $existingSidebars = $('div[id^="' + TIMELINE_HTML_ID_PREFIX + '"]');
+
+        for (let i = $existingSidebars.length - 1; i >= targetCount; i--) {
+            $($existingSidebars[i]).remove();
+            debugLog(`Timeline - Removed sidebar DIV: ${TIMELINE_HTML_ID_PREFIX}${i}`);
+        }
+
+        for (let i = $existingSidebars.length; i < targetCount; i++) {
+            $('body').append(getTimelineSidebarHtml(i));
+            debugLog(`Timeline - Added sidebar DIV: ${TIMELINE_HTML_ID_PREFIX}${i}`);
+        }
+    }
+
+
     function getTimelineCSS() {
         const isDark = isDarkModeActive();
+
         return `
-            #${TIMELINE_HTML_ID} {
+            div[id^="${TIMELINE_HTML_ID_PREFIX}"] {
                 position: fixed !important;
                 width: 4px !important;
                 background-color: ${isDark ? '#555' : '#B0B0B0'} !important;
@@ -418,52 +481,79 @@
                 border-radius: 2px !important;
                 transition: opacity 0.3s, left 0.3s ease-out, top 0.3s ease-out, height 0.3s ease-out;
             }
-            #${TIMELINE_HTML_ID}.hidden { opacity: 0 !important; pointer-events: none !important; }
-            #${TIMELINE_HTML_ID} .cgpt-dots { margin: 0 !important; padding: 0 !important; list-style: none !important; position: relative !important; height: 100% !important; }
-            #${TIMELINE_HTML_ID} .cgpt-dots li { position: absolute !important; left: 50% !important; transform: translateX(-50%) !important; width: 10px !important; height: 10px !important; padding: 4px !important; box-sizing: content-box !important; border-radius: 50% !important; cursor: pointer !important; transition: width 0.2s ease-in-out, height 0.2s ease-in-out, background-color 0.2s ease-in-out, transform 0.2s ease-in-out; }
-            #${TIMELINE_HTML_ID} .cgpt-dots li::before { content: ''; position: absolute; top: 50%; left: 50%; width: 8px; height: 8px; background-color: ${isDark ? '#888' : 'grey'}; border-radius: 50%; transform: translate(-50%, -50%); transition: width 0.2s ease-in-out, height 0.2s ease-in-out, background-color 0.2s ease-in-out; }
-            #${TIMELINE_HTML_ID} .cgpt-dots li.user::before { background-color: ${isDark ? '#67A36A' : '#4CAF50'} !important; }
-            #${TIMELINE_HTML_ID} .cgpt-dots li.assistant::before { background-color: ${isDark ? '#3B82F6' : '#0d6efd'} !important; }
-            #${TIMELINE_HTML_ID} .cgpt-dots li.active::before { width: 12px !important; height: 12px !important; }
-            #${TIMELINE_HTML_ID} .cgpt-dots li span {
+            div[id^="${TIMELINE_HTML_ID_PREFIX}"].hidden { opacity: 0 !important; pointer-events: none !important; }
+            div[id^="${TIMELINE_HTML_ID_PREFIX}"] .cgpt-dots { margin: 0 !important; padding: 0 !important; list-style: none !important; position: relative !important; height: 100% !important; }
+            div[id^="${TIMELINE_HTML_ID_PREFIX}"] .cgpt-dots li { position: absolute !important; left: 50% !important; transform: translateX(-50%) !important; width: 10px !important; height: 10px !important; padding: 4px !important; box-sizing: content-box !important; border-radius: 50% !important; cursor: pointer !important; transition: width 0.2s ease-in-out, height 0.2s ease-in-out, background-color 0.2s ease-in-out, transform 0.2s ease-in-out; }
+            div[id^="${TIMELINE_HTML_ID_PREFIX}"] .cgpt-dots li::before { content: ''; position: absolute; top: 50%; left: 50%; width: 8px; height: 8px; background-color: ${isDark ? '#888' : 'grey'}; border-radius: 50%; transform: translate(-50%, -50%); transition: width 0.2s ease-in-out, height 0.2s ease-in-out, background-color 0.2s ease-in-out; }
+            div[id^="${TIMELINE_HTML_ID_PREFIX}"] .cgpt-dots li.user::before { background-color: ${isDark ? '#67A36A' : '#4CAF50'} !important; }
+            div[id^="${TIMELINE_HTML_ID_PREFIX}"] .cgpt-dots li.assistant::before { background-color: ${isDark ? '#3B82F6' : '#0d6efd'} !important; }
+            div[id^="${TIMELINE_HTML_ID_PREFIX}"] .cgpt-dots li.active::before { width: 12px !important; height: 12px !important; }
+            div[id^="${TIMELINE_HTML_ID_PREFIX}"] .cgpt-dots li span {
                 position: absolute !important; white-space: nowrap !important; font-size: 11px !important;
-                left: 16px !important; top: 50% !important; transform: translateY(-50%) !important;
+                left: 16px !important;
+                top: 50% !important; transform: translateY(-50%) !important;
                 color: ${isDark ? '#D0D0D0' : 'grey'} !important;
                 background-color: ${isDark ? 'rgba(40, 40, 40, 0.85)' : 'rgba(255, 255, 255, 0.75)'} !important;
                 padding: 1px 3px !important; border-radius: 2px !important; pointer-events: none;
             }
-            #${TIMELINE_HTML_ID} .cgpt-dots li.endpoint-number span { color: ${isDark ? '#F0F0F0' : 'black'} !important; font-weight: bold; }
-            #${TIMELINE_HTML_ID} .cgpt-dots li:not(.endpoint-number) span { opacity: 0.75 !important; }
+            div[id^="${TIMELINE_HTML_ID_PREFIX}"] .cgpt-dots li.endpoint-number span { color: ${isDark ? '#F0F0F0' : 'black'} !important; font-weight: bold; }
+            div[id^="${TIMELINE_HTML_ID_PREFIX}"] .cgpt-dots li:not(.endpoint-number) span { opacity: 0.75 !important; }
         `;
     }
-    const timelineNavigatorHtml = `<div id="${TIMELINE_HTML_ID}" class="hidden"><ul class="cgpt-dots"></ul></div>`;
+
 
     function timeline_injectCSS_local() {
         injectStyles(TIMELINE_CSS_ID, getTimelineCSS());
     }
 
     function timeline_updateTimelinePositionAndVisibility() {
-        const $navigatorRoot = $(`#${TIMELINE_HTML_ID}`); if (!$navigatorRoot.length) return;
         const $mainElement = $('main');
-        if (!$mainElement.length) { $navigatorRoot.addClass('hidden'); debugWarn('Timeline - Main element not found.'); return; }
-
-        const mainRect = $mainElement.get(0).getBoundingClientRect();
-        $navigatorRoot.css('left', (mainRect.left + 15) + 'px');
-
-        if (timeline_messages.length > TIMELINE_MESSAGE_THRESHOLD_FOR_EXPANSION) {
-            const newTop = TIMELINE_EXPANDED_TOP_OFFSET_PX;
-            const newHeight = window.innerHeight - TIMELINE_EXPANDED_TOP_OFFSET_PX - TIMELINE_EXPANDED_BOTTOM_OFFSET_PX;
-            $navigatorRoot.css({ 'top': newTop + 'px', 'height': newHeight + 'px' });
-            debugLog(`Timeline expanded: top ${newTop}px, height ${newHeight}px`);
-        } else {
-            $navigatorRoot.css({ 'top': TIMELINE_DEFAULT_TOP_VH + 'vh', 'height': TIMELINE_DEFAULT_HEIGHT_VH + 'vh' });
-            debugLog(`Timeline default: top ${TIMELINE_DEFAULT_TOP_VH}vh, height ${TIMELINE_DEFAULT_HEIGHT_VH}vh`);
+        if (!$mainElement.length) {
+            $('div[id^="' + TIMELINE_HTML_ID_PREFIX + '"]').addClass('hidden');
+            debugWarn('Timeline - Main element not found.'); return;
         }
 
-        if (timeline_messages.length > 0 && timeline_chatScrollContainer && timeline_chatScrollContainer.length && timeline_chatScrollContainer.get(0).isConnected) {
-            $navigatorRoot.removeClass('hidden');
-        } else { $navigatorRoot.addClass('hidden'); }
+        const mainRect = $mainElement.get(0).getBoundingClientRect();
+        const baseLeftOffset = mainRect.left + 15;
+
+        const { numSidebars, messagesPerEffectiveSidebar } = _getTimelineLayoutConfig();
+
+        for (let s = 0; s < numSidebars; s++) {
+            const $navigatorRoot = $(`#${TIMELINE_HTML_ID_PREFIX}${s}`);
+            if (!$navigatorRoot.length) continue;
+
+
+            const currentLeft = baseLeftOffset + s * (TIMELINE_SIDEBAR_VISUAL_WIDTH_PX + TIMELINE_SIDEBAR_SPACING_PX);
+            $navigatorRoot.css('left', currentLeft + 'px');
+
+
+            const startIndex = s * messagesPerEffectiveSidebar;
+            const endIndex = Math.min(startIndex + messagesPerEffectiveSidebar, timeline_messages.length);
+            const numMessagesInThisSidebar = endIndex - startIndex;
+
+            if (numMessagesInThisSidebar > TIMELINE_MESSAGE_THRESHOLD_FOR_EXPANSION) {
+                const newTop = TIMELINE_EXPANDED_TOP_OFFSET_PX;
+                const newHeight = window.innerHeight - TIMELINE_EXPANDED_TOP_OFFSET_PX - TIMELINE_EXPANDED_BOTTOM_OFFSET_PX;
+                $navigatorRoot.css({ 'top': newTop + 'px', 'height': newHeight + 'px' });
+            } else {
+                $navigatorRoot.css({ 'top': TIMELINE_DEFAULT_TOP_VH + 'vh', 'height': TIMELINE_DEFAULT_HEIGHT_VH + 'vh' });
+            }
+
+            if (timeline_messages.length > 0 && timeline_chatScrollContainer && timeline_chatScrollContainer.length && timeline_chatScrollContainer.get(0).isConnected) {
+                $navigatorRoot.removeClass('hidden');
+            } else {
+                $navigatorRoot.addClass('hidden');
+            }
+        }
+
+        $('div[id^="' + TIMELINE_HTML_ID_PREFIX + '"]').each(function(index) {
+            if (index >= numSidebars) {
+                $(this).addClass('hidden');
+            }
+        });
+        if (numSidebars > 0) debugLog(`Timeline updated: ${numSidebars} sidebar(s) positioned.`);
     }
+
 
     function timeline_findChatElements() {
         timeline_chatScrollContainer = $('#thread div.flex.h-full.flex-col.overflow-y-auto[class*="scrollbar-gutter:stable_both-edges"]').first();
@@ -495,28 +585,66 @@
     }
 
     function timeline_renderDots() {
-        const $dotsUl = $(`#${TIMELINE_HTML_ID} .cgpt-dots`); if (!$dotsUl.length) return;
         if (timeline_intersectionObserver) { timeline_intersectionObserver.disconnect(); }
-        $dotsUl.empty();
+
+        const { numSidebars, messagesPerEffectiveSidebar } = _getTimelineLayoutConfig();
+        timeline_ensureSidebarDivs(numSidebars);
+
+        if (numSidebars === 0) {
+            $('div[id^="' + TIMELINE_HTML_ID_PREFIX + '"] .cgpt-dots').empty();
+            timeline_updateTimelinePositionAndVisibility();
+            return;
+        }
+
+        debugLog(`Timeline - Rendering dots for ${numSidebars} sidebar(s), ~${messagesPerEffectiveSidebar} messages/sidebar.`);
+
+        for (let s = 0; s < numSidebars; s++) {
+            const $dotsUl = $(`#${TIMELINE_HTML_ID_PREFIX}${s} .cgpt-dots`);
+            if (!$dotsUl.length) {
+                debugWarn(`Timeline - Dots UL not found for sidebar ${s}`);
+                continue;
+            }
+            $dotsUl.empty();
+
+            const startIndex = s * messagesPerEffectiveSidebar;
+            const endIndex = Math.min(startIndex + messagesPerEffectiveSidebar, timeline_messages.length);
+            const numMessagesInThisSidebar = endIndex - startIndex;
+
+            for (let i = startIndex; i < endIndex; i++) {
+                const msgData = timeline_messages[i];
+                const localIndex = i - startIndex;
+
+                const li = $('<li/>').addClass(msgData.role === 'assistant' ? 'assistant' : 'user')
+                                   .attr('data-idx', i)
+                                   .attr('title', `הודעה ${i+1} (${msgData.role})`);
+
+
+                if (i === 0 || i === timeline_messages.length - 1) {
+                    li.addClass('endpoint-number');
+                }
+
+                let topPercentage = 0;
+                if (numMessagesInThisSidebar === 1) {
+                    topPercentage = 50;
+                } else if (numMessagesInThisSidebar > 1) {
+                    topPercentage = (localIndex / (numMessagesInThisSidebar - 1)) * 100;
+                }
+                li.css('top', topPercentage + '%').append($(`<span>${i+1}</span>`));
+                $dotsUl.append(li);
+            }
+        }
         timeline_updateTimelinePositionAndVisibility();
-
-        if (timeline_messages.length === 0) return;
-
-        timeline_messages.forEach((msgData, i) => {
-            const li = $('<li/>').addClass(msgData.role === 'assistant' ? 'assistant' : 'user').attr('data-idx', i).attr('title', `הודעה ${i+1} (${msgData.role})`);
-            if (i === 0 || i === timeline_messages.length - 1) li.addClass('endpoint-number');
-            let topPercentage = timeline_messages.length === 1 ? 50 : (timeline_messages.length > 1 ? (i / (timeline_messages.length - 1)) * 100 : 0);
-            li.css('top', topPercentage + '%').append($(`<span>${i+1}</span>`));
-            $dotsUl.append(li);
-        });
         timeline_updateTimelineState(false);
         if (pageVisible && currentSettings.enableTimelineSidebar) { timeline_setupIntersectionObserver(); }
     }
 
+
     function timeline_updateTimelineState(isScrollingEvent = true) {
-        const $dotsUl = $(`#${TIMELINE_HTML_ID} .cgpt-dots`);
-        if (timeline_messages.length === 0 || !timeline_chatScrollContainer || !timeline_chatScrollContainer.length || !timeline_chatScrollContainer.get(0).isConnected || !$dotsUl.length) {
-            if ($dotsUl.length) $dotsUl.children('li').removeClass('active');
+        const { numSidebars, messagesPerEffectiveSidebar } = _getTimelineLayoutConfig();
+        const $allDotsLi = $(`div[id^="${TIMELINE_HTML_ID_PREFIX}"] .cgpt-dots li`);
+
+        if (timeline_messages.length === 0 || !timeline_chatScrollContainer || !timeline_chatScrollContainer.length || !timeline_chatScrollContainer.get(0).isConnected || numSidebars === 0) {
+            $allDotsLi.removeClass('active');
             timeline_currentMessageIndex = -1; return;
         }
         timeline_chatScrollContainerTop = timeline_chatScrollContainer.get(0).getBoundingClientRect().top;
@@ -534,7 +662,7 @@
             if (visiblePortion >= visibilityThreshold) {
                 if (msgTopRel >= -(msgHeight * (1 - visibilityThreshold)) && msgTopRel < smallestPositiveOffset) {
                      smallestPositiveOffset = msgTopRel; bestMatchIndex = i;
-                } else if (bestMatchIndex === -1) bestMatchIndex = i;
+                } else if (bestMatchIndex === -1) { bestMatchIndex = i; }
             }
         }
         if (bestMatchIndex === -1 && timeline_messages.length > 0) {
@@ -554,11 +682,27 @@
             }
         }
         bestMatchIndex = timeline_messages.length > 0 ? Math.max(0, Math.min(bestMatchIndex, timeline_messages.length - 1)) : -1;
-        if (bestMatchIndex !== -1 && (timeline_currentMessageIndex !== bestMatchIndex || $dotsUl.children('li.active').length === 0) ) {
+
+        if (bestMatchIndex !== -1 && (timeline_currentMessageIndex !== bestMatchIndex || $allDotsLi.filter('.active').length === 0) ) {
             timeline_currentMessageIndex = bestMatchIndex;
-            $dotsUl.children('li').removeClass('active').eq(timeline_currentMessageIndex).addClass('active');
+            $allDotsLi.removeClass('active');
+
+            if (messagesPerEffectiveSidebar > 0) {
+                const targetSidebarIndex = Math.floor(timeline_currentMessageIndex / messagesPerEffectiveSidebar);
+                const localIndexInSidebar = timeline_currentMessageIndex % messagesPerEffectiveSidebar;
+                 if(targetSidebarIndex < numSidebars){
+                    $(`#${TIMELINE_HTML_ID_PREFIX}${targetSidebarIndex} .cgpt-dots li`).eq(localIndexInSidebar).addClass('active');
+                } else {
+                    debugWarn(`Timeline - Calculated targetSidebarIndex ${targetSidebarIndex} is out of bounds for ${numSidebars} sidebars.`);
+                }
+            }
+        } else if (bestMatchIndex === -1 && timeline_currentMessageIndex !== -1) {
+
+            $allDotsLi.removeClass('active');
+            timeline_currentMessageIndex = -1;
         }
     }
+
 
     function timeline_setupIntersectionObserver(){
         if (!pageVisible || !currentSettings.enableTimelineSidebar) {
@@ -585,9 +729,21 @@
             if (bestEntry) {
                  const idx = parseInt(bestEntry.target.getAttribute('data-cgpt-idx'));
                  if (!isNaN(idx) && idx < timeline_messages.length) {
-                    if (idx !== timeline_currentMessageIndex || !$(`#${TIMELINE_HTML_ID} .cgpt-dots li.active`).length) {
+                    const $allDotsLi = $(`div[id^="${TIMELINE_HTML_ID_PREFIX}"] .cgpt-dots li`);
+                    if (idx !== timeline_currentMessageIndex || !$allDotsLi.filter('.active').length) {
                         timeline_currentMessageIndex = idx;
-                        $(`#${TIMELINE_HTML_ID} .cgpt-dots li`).removeClass('active').eq(idx).addClass('active');
+                        $allDotsLi.removeClass('active');
+
+                        const { messagesPerEffectiveSidebar, numSidebars } = _getTimelineLayoutConfig();
+                        if (messagesPerEffectiveSidebar > 0) {
+                            const targetSidebarIndex = Math.floor(idx / messagesPerEffectiveSidebar);
+                            const localIndexInSidebar = idx % messagesPerEffectiveSidebar;
+                            if(targetSidebarIndex < numSidebars){
+                                $(`#${TIMELINE_HTML_ID_PREFIX}${targetSidebarIndex} .cgpt-dots li`).eq(localIndexInSidebar).addClass('active');
+                            } else {
+                                debugWarn(`Timeline IO - Calculated targetSidebarIndex ${targetSidebarIndex} is out of bounds for ${numSidebars} sidebars.`);
+                            }
+                        }
                     }
                  }
             }
@@ -603,7 +759,6 @@
     }
 
     function timeline_scrollToMessage(index, smooth = true) {
-        const $dotsUl = $(`#${TIMELINE_HTML_ID} .cgpt-dots`);
         if (index >= 0 && index < timeline_messages.length) {
             const messageEl = timeline_messages[index].element;
             if (messageEl && messageEl.length && messageEl.get(0) && messageEl.get(0).isConnected && timeline_chatScrollContainer && timeline_chatScrollContainer.length) {
@@ -613,10 +768,24 @@
                 const messageRectTop = messageDomElement.getBoundingClientRect().top;
                 const offsetRelativeToContainerViewport = messageRectTop - timeline_chatScrollContainerTop;
                 const targetScrollTop = scrollContainerElement.scrollTop + offsetRelativeToContainerViewport;
-                if (timeline_currentMessageIndex !== index || !$dotsUl.children('li.active').length) {
+
+
+                const $allDotsLi = $(`div[id^="${TIMELINE_HTML_ID_PREFIX}"] .cgpt-dots li`);
+                if (timeline_currentMessageIndex !== index || !$allDotsLi.filter('.active').length) {
                     timeline_currentMessageIndex = index;
-                    if ($dotsUl.length) $dotsUl.children('li').removeClass('active').eq(timeline_currentMessageIndex).addClass('active');
+                    $allDotsLi.removeClass('active');
+                    const { messagesPerEffectiveSidebar, numSidebars } = _getTimelineLayoutConfig();
+                     if (messagesPerEffectiveSidebar > 0) {
+                        const targetSidebarIndex = Math.floor(index / messagesPerEffectiveSidebar);
+                        const localIndexInSidebar = index % messagesPerEffectiveSidebar;
+                        if(targetSidebarIndex < numSidebars){
+                            $(`#${TIMELINE_HTML_ID_PREFIX}${targetSidebarIndex} .cgpt-dots li`).eq(localIndexInSidebar).addClass('active');
+                        } else {
+                             debugWarn(`Timeline Scroll - Calculated targetSidebarIndex ${targetSidebarIndex} is out of bounds for ${numSidebars} sidebars.`);
+                        }
+                     }
                 }
+
                 if ('scrollTo' in scrollContainerElement && typeof scrollContainerElement.scrollTo === 'function') {
                     scrollContainerElement.scrollTo({ top: targetScrollTop, behavior: smooth ? 'smooth' : 'auto' });
                 } else {
@@ -630,6 +799,7 @@
         } else { debugWarn(`Timeline - Invalid index ${index} for scrollToMessage.`); }
     }
 
+
     function timeline_setupDOMObserver() {
         if (timeline_domObserver) timeline_domObserver.disconnect();
         const observerTargetNode = document.body;
@@ -641,7 +811,7 @@
                 if (mutation.target.id === 'root' || mutation.target.tagName === 'MAIN' ||
                     (mutation.target.parentElement && mutation.target.parentElement.id === 'root') ||
                     $(mutation.target).closest('#thread').length > 0 ||
-                    Array.from(mutation.addedNodes).some(node => $(node).closest('#thread').length > 0 || (node.id === 'thread')) ||
+                    Array.from(mutation.addedNodes).some(node => $(node).closest('#thread').length > 0 || (node.id === 'thread') || (node.nodeType === 1 && $(node).find('#thread').length > 0)) ||
                     Array.from(mutation.removedNodes).some(node => $(node).closest('#thread').length > 0 || (node.id === 'thread'))) {
                      refreshNeeded = true; break;
                 }
@@ -649,22 +819,30 @@
                     (mutation.type === 'childList' && (mutation.addedNodes.length || mutation.removedNodes.length))) {
                      refreshNeeded = true; break;
                 }
+
+                if (mutation.type === 'childList' && Array.from(mutation.removedNodes).some(node => node.nodeType === 1 && node.id && node.id.startsWith(TIMELINE_HTML_ID_PREFIX))) {
+                    debugLog("Timeline DOMObserver: A timeline sidebar was removed, flagging for refresh.");
+                    refreshNeeded = true; break;
+                }
             }
             if (refreshNeeded) {
                 debugLog("Timeline DOMObserver: Detected relevant DOM change.");
                 const messagesHaveChangedStructurally = timeline_findChatElements();
-                if (messagesHaveChangedStructurally) {
-                    debugLog("Timeline DOMObserver: Message structure changed. Re-rendering dots.");
+                if (messagesHaveChangedStructurally || $(`div[id^="${TIMELINE_HTML_ID_PREFIX}"]`).length === 0 && timeline_messages.length > 0) {
+                    debugLog("Timeline DOMObserver: Message structure changed or sidebars missing. Re-rendering dots.");
                     const oldIndex = timeline_currentMessageIndex;
                     timeline_currentMessageIndex = -1;
-                    timeline_renderDots(); // This will also update position/height
+                    timeline_renderDots();
                     if (DEBUG && oldIndex !== -1) console.log("Timeline DOMObserver: currentMessageIndex reset due to structural change.");
-                } else if (timeline_messages.length > 0 && !$(`#${TIMELINE_HTML_ID} .cgpt-dots li.active`).length) {
+                } else if (timeline_messages.length > 0 && !$(`div[id^="${TIMELINE_HTML_ID_PREFIX}"] .cgpt-dots li.active`).length) {
                     debugLog("Timeline DOMObserver: No active dot, attempting to update state based on calculation.");
                     timeline_updateTimelineState(false);
-                } else if (timeline_messages.length === 0 && $(`#${TIMELINE_HTML_ID} .cgpt-dots li`).length > 0) {
+                } else if (timeline_messages.length === 0 && $(`div[id^="${TIMELINE_HTML_ID_PREFIX}"] .cgpt-dots li`).length > 0) {
                     debugLog("Timeline DOMObserver: Messages cleared, re-rendering to remove dots.");
-                    timeline_renderDots(); // This will also update position/height to default
+                    timeline_renderDots();
+                } else {
+
+                    timeline_updateTimelinePositionAndVisibility();
                 }
             }
         }, 500));
@@ -676,7 +854,7 @@
 
     function timeline_setupResizeObserver() {
         if (timeline_mainElementResizeObserver) timeline_mainElementResizeObserver.disconnect();
-        const mainEl = $('main').get(0); // Also observe 'main' for width changes
+        const mainEl = $('main').get(0);
         const windowEl = window;
 
         const debouncedUpdate = debounce(timeline_updateTimelinePositionAndVisibility, 200);
@@ -688,19 +866,19 @@
         } else {
              debugWarn("Timeline - 'main' not found for ResizeObserver.");
         }
-        // Always listen to window resize for height changes or if mainEl is not found
         $(windowEl).off('resize.cgpttimeline').on('resize.cgpttimeline', debouncedUpdate);
         debugLog("Timeline - Attached to window resize event.");
     }
 
     function timeline_cleanup() {
         debugLog('Timeline - Cleaning up...');
-        $(`#${TIMELINE_HTML_ID}`).remove();
+        timeline_ensureSidebarDivs(0);
         $(`#${TIMELINE_CSS_ID}`).remove();
         if (timeline_domObserver) { timeline_domObserver.disconnect(); timeline_domObserver = null; }
         if (timeline_mainElementResizeObserver) { timeline_mainElementResizeObserver.disconnect(); timeline_mainElementResizeObserver = null; }
         if (timeline_intersectionObserver) { timeline_intersectionObserver.disconnect(); timeline_intersectionObserver = null; }
         $(window).off('resize.cgpttimeline');
+        $(document.body).off('click.cgptTimelineDots');
         timeline_messages = [];
         timeline_currentMessageIndex = -1;
         timeline_initialized = false;
@@ -713,26 +891,19 @@
             return;
         }
         debugLog('Timeline - Attempting actual initialization...');
-        if (!document.getElementById(TIMELINE_HTML_ID)) $('body').append(timelineNavigatorHtml);
+
         timeline_injectCSS_local();
 
-        const $navigatorRootTimeline = $(`#${TIMELINE_HTML_ID}`);
-         $navigatorRootTimeline.css({
-            'top': TIMELINE_DEFAULT_TOP_VH + 'vh',
-            'height': TIMELINE_DEFAULT_HEIGHT_VH + 'vh'
-        });
 
-        if ($navigatorRootTimeline.length) {
-            $navigatorRootTimeline.off('click.cgptTimelineDots').on('click.cgptTimelineDots', '.cgpt-dots li', function(e){
-                e.stopPropagation();
-                const idx = parseInt($(this).attr('data-idx'));
-                if (!isNaN(idx)) {
-                    debugLog(`Timeline - Dot clicked, index: ${idx}`);
-                    timeline_scrollToMessage(idx, true);
-                }
-            });
-            debugLog('Timeline - Click listener for dots attached.');
-        } else { debugError('Timeline - Could not find navigator root for dot click listener.'); }
+        $(document.body).off('click.cgptTimelineDots').on('click.cgptTimelineDots', `div[id^="${TIMELINE_HTML_ID_PREFIX}"] .cgpt-dots li`, function(e){
+            e.stopPropagation();
+            const idx = parseInt($(this).attr('data-idx'));
+            if (!isNaN(idx)) {
+                debugLog(`Timeline - Dot clicked, global index: ${idx}`);
+                timeline_scrollToMessage(idx, true);
+            }
+        });
+        debugLog('Timeline - Delegated click listener for dots attached to document.body.');
 
         if (timeline_findChatElements() || timeline_messages.length === 0) {
             timeline_renderDots();
@@ -742,6 +913,7 @@
         timeline_initialized = true;
         debugLog("Timeline - Initialized successfully.");
     }
+
 
     function initializeTimelineFeatureWrapper() {
         if (currentSettings.enableTimelineSidebar) {
@@ -755,15 +927,19 @@
             } else {
                  debugLog('Timeline - Feature enabled, already initialized. Ensuring setup and visibility.');
                  timeline_injectCSS_local();
-                 timeline_updateTimelinePositionAndVisibility();
+                 if (timeline_findChatElements() || $(`div[id^="${TIMELINE_HTML_ID_PREFIX}"]`).length === 0 && timeline_messages.length > 0) {
+                    timeline_renderDots();
+                 } else {
+                    timeline_updateTimelinePositionAndVisibility();
+                 }
                  if (pageVisible) {
                     if (!timeline_domObserver) timeline_setupDOMObserver();
                     else { try { timeline_domObserver.observe(document.body, { childList: true, subtree: true }); } catch(e) {} }
-                    if (!timeline_mainElementResizeObserver) timeline_setupResizeObserver(); // Or ensure it's observing
-                    else {
-                        const mainEl = $('main').get(0);
-                        if (mainEl) try {timeline_mainElementResizeObserver.observe(mainEl);} catch(e){}
-                    }
+
+                    const mainEl = $('main').get(0);
+                    if (!timeline_mainElementResizeObserver && mainEl) timeline_setupResizeObserver();
+                    else if (mainEl) { try {timeline_mainElementResizeObserver.observe(mainEl);} catch(e){} }
+
                     timeline_setupIntersectionObserver();
                  }
             }
@@ -868,40 +1044,55 @@
         initializeHidePlansFeature();
         initializeTimelineFeatureWrapper();
         initializeThemeWatcher();
-        GM_registerMenuCommand('הגדרות כלי עזר וסרגל צד (v3.1.6)', openSettingsDialog);
+        GM_registerMenuCommand('הגדרות כלי עזר וסרגל צד (v3.1.9)', openSettingsDialog);
 
         document.addEventListener('visibilitychange', ()=>{
             const oldPageVisible = pageVisible;
             pageVisible = !document.hidden;
             debugLog(`Page visibility changed to: ${pageVisible}`);
             if (pageVisible && !oldPageVisible) {
+
                 if (currentSettings.enableCopyButton) {
-                    if (!copyButtonObserver && document.querySelector(ACTIONS_CONTAINER_SELECTOR)) attemptToSetupCopyButtonObserver();
-                    else if (copyButtonObserver) { try { copyButtonObserver.observe(document.querySelector(ACTIONS_CONTAINER_SELECTOR) || document.body, { childList: true, subtree: true }); } catch(e) {} }
-                    if (window.__cgptCopyBtnBodyObserver) { try { window.__cgptCopyBtnBodyObserver.observe(document.body, { childList: true, subtree: true }); } catch(e) {} }
+                     if (!copyButtonObserver && document.querySelector(ACTIONS_CONTAINER_SELECTOR)) attemptToSetupCopyButtonObserver();
+                     else if (copyButtonObserver && document.querySelector(ACTIONS_CONTAINER_SELECTOR)) { try { copyButtonObserver.observe(document.querySelector(ACTIONS_CONTAINER_SELECTOR), { childList: true, subtree: true }); } catch(e) {} }
+                     if (window.__cgptCopyBtnBodyObserver) { try { window.__cgptCopyBtnBodyObserver.observe(document.body, { childList: true, subtree: true }); } catch(e) {} }
                 }
                 if (currentSettings.enableHidePlansButton) {
                     findAndHidePlansButton();
                     if (!hidePlansObserver) initializeHidePlansFeature();
                     else { try { hidePlansObserver.observe(document.body, { childList: true, subtree: true }); } catch(e) {} }
                 }
-                if (currentSettings.enableTimelineSidebar && timeline_initialized) {
-                    timeline_updateTimelinePositionAndVisibility();
-                    if (timeline_domObserver) { try { timeline_domObserver.observe(document.body, { childList: true, subtree: true }); } catch(e) {} }
-                    else if (timeline_initialized) timeline_setupDOMObserver();
-                    timeline_setupIntersectionObserver();
-                } else if (currentSettings.enableTimelineSidebar && !timeline_initialized) {
-                    initializeTimelineFeatureWrapper();
+                if (currentSettings.enableTimelineSidebar) {
+                    if (!timeline_initialized) {
+                        initializeTimelineFeatureWrapper();
+                    } else {
+
+                        timeline_updateTimelinePositionAndVisibility();
+                        if (timeline_domObserver) { try { timeline_domObserver.observe(document.body, { childList: true, subtree: true }); } catch(e) {} }
+                        else timeline_setupDOMObserver();
+
+                        const mainEl = $('main').get(0);
+                        if (timeline_mainElementResizeObserver && mainEl) { try { timeline_mainElementResizeObserver.observe(mainEl); } catch(e){} }
+                        else if(mainEl) timeline_setupResizeObserver();
+
+                        timeline_setupIntersectionObserver();
+                    }
                 }
                  debugLog("Features re-checked/re-activated on page visibility.");
             } else if (!pageVisible && oldPageVisible) {
+                if (copyButtonObserver) { try { copyButtonObserver.disconnect(); } catch(e){} }
+                if (window.__cgptCopyBtnBodyObserver) { try { window.__cgptCopyBtnBodyObserver.disconnect(); } catch(e){} }
+                if (hidePlansObserver) { try { hidePlansObserver.disconnect(); } catch(e){} }
+                if (timeline_domObserver) { try { timeline_domObserver.disconnect(); } catch(e){} }
+
                 if (timeline_intersectionObserver) {
                     timeline_intersectionObserver.disconnect();
                     debugLog("Timeline IntersectionObserver disconnected due to page hidden.");
                 }
+                 debugLog("Some observers disconnected due to page hidden.");
             }
         });
-        debugLog('CombinedScript & Timeline Script v3.1.6 - Fully initialized.');
+        debugLog('CombinedScript & Timeline Script v3.1.9 - Fully initialized.');
     }
 
     if (typeof $ === 'undefined' || typeof $.fn.jquery === 'undefined') {
