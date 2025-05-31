@@ -15,8 +15,8 @@
 // @grant        GM_notification
 // @run-at       document-idle
 // @require      https://code.jquery.com/jquery-3.7.1.min.js
-// @updateURL    https://raw.githubusercontent.com/Y-PLONI/SCRIPT1/main/SCRIPT.user.js
-// @downloadURL  https://raw.githubusercontent.com/Y-PLONI/SCRIPT1/main/SCRIPT.user.js
+// @updateURL    https://raw.githubusercontent.com/Y-PLONI/SCRIPT1/main/ChatGPT-Enhancer.meta.js
+// @downloadURL  https://raw.githubusercontent.com/Y-PLONI/SCRIPT1/main/ChatGPT-Enhancer.user.js
 // ==/UserScript==
 
 (function() {
