@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         כלי עזר משולבים וסרגל צד ל-ChatGPT (עם הגדרות v3.1.9 - תיקוני טבלאות ורשימות)
 // @namespace    http://tampermonkey.net/
-// @version      3.1.9
+// @version      3.1.10
 // @description  משלב עיצוב בועות, RTL, העתקה, הסתרת "תוכניות", וסרגל צד Timeline דינמי מרובה עמודות, עם התאמה אישית, אופטימיזציות, ותמיכה במצב כהה. תיקונים לטבלאות ורשימות.
 // @author       Y-PLONI (שינויים על ידי עוזר AI)
 // @match        *://chatgpt.com/*
@@ -136,6 +136,8 @@
                     margin-top: ${aiMarginTop} !important;
                     border: 1px solid var(--cgpt-ai-border) !important;
                     border-left: 4px solid var(--cgpt-ai-stripe) !important;
+                    overflow: hidden !important;
+                    overflow-x: auto !important;
                 }
                 ${aiMessageContainerSelector} .markdown.prose, ${aiMessageContainerSelector} .text-token-text-primary {
                      color: var(--cgpt-ai-bubble-text) !important;
@@ -143,6 +145,7 @@
                 /* NEW/MODIFIED: Styles for tables and lists inside AI messages */
                 ${aiMessageContainerSelector} .markdown.prose table {
                     display: block !important;
+                    width: 100% !important;
                     max-width: 100% !important;
                     overflow-x: auto !important;
                     margin-top: 0.5em !important;
