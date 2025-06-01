@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         כלי עזר משולבים וסרגל צד ל-ChatGPT (עם הגדרות v3.1.9 - תיקוני טבלאות ורשימות)
-// @namespace    http://tamp//ermonkey.net/
-// @version      3.1.12
-// @description  משלב עיצוב בועות, RTL, העתקה, הסתרת "תוכניות", וסרגל צד Timeline דינמי מרובה עמודות, עם התאמה אישית, אופטימיזציות, ותמיכה במצב כהה. תיקונים לטבלאות ורשימות. (אופטימיזציות CPU/RAM)
+// @name         כלי עזר משולבים וסרגל צד ל-ChatGPT
+// @namespace    http://tampermonkey.net/
+// @version      3.1.13
+// @description  משלב עיצוב בועות, RTL, העתקה, הסתרת "תוכניות", וסרגל צד Timeline דינמי מרובה עמודות, עם התאמה אישית, אופטימיזציות, ותמיכה במצב כהה. תיקונים לטבלאות ורשימות. (אופטימיזציות CPU/RAM + תיקון הסתרת תוכניות למשתמש חינמי)
 // @author       Y-PLONI
 // @match        *://chatgpt.com/*
 // @match        *://chat.openai.com/*
@@ -27,7 +27,7 @@
     const debugWarn = DEBUG ? (...args) => console.warn('[CGPT Script]', ...args) : () => {};
     const debugError = DEBUG ? (...args) => console.error('[CGPT Script]', ...args) : () => {};
 
-    debugLog('ChatGPT Combined Utilities & Timeline Script v3.1.9 (Optimized) - Started');
+    debugLog('ChatGPT Combined Utilities & Timeline Script - Started');
 
     // --- START: Settings and General Utilities ---
     const SETTINGS_KEYS = {
@@ -83,8 +83,11 @@
     const RETRY_MS = 500;
     const MAX_FIND_ACTIONS_CONTAINER_RETRIES = 10;
 
-    const HIDE_PLANS_MAIN_TEXT = "View plans";
-    const HIDE_PLANS_SUBTEXT_KEYWORD = "Unlimited access";
+    const HIDE_PLANS_MAIN_TEXT = "View plans"; // For paid users
+    const HIDE_PLANS_SUBTEXT_KEYWORD = "Unlimited access"; // For paid users
+    const UPGRADE_PLAN_MAIN_TEXT = "Upgrade plan"; // For free users
+    const UPGRADE_PLAN_SUBTEXT_KEYWORD = "More access to the best models"; // For free users
+
     const PLANS_BUTTON_ITEM_SELECTOR = 'div[class*="__menu-item"]';
     const PLANS_BUTTON_WRAPPER_ATTR = 'data-plans-wrapper-hidden-by-script';
     const PLANS_BUTTON_ITEM_ATTR = 'data-plans-item-hidden-by-script';
@@ -363,10 +366,12 @@
         // debugLog(`HidePlans - Attempt ${hidePlansAttempts} to find and hide.`); // Less verbose
         const potentialItems = document.querySelectorAll(PLANS_BUTTON_ITEM_SELECTOR);
         let itemToHide = null;
+
         for (let i = 0; i < potentialItems.length; i++) {
             const item = potentialItems[i];
             const parentEl = item.parentElement;
 
+            // Skip if already processed by attributes
             if (parentEl && parentEl.getAttribute(PLANS_BUTTON_WRAPPER_ATTR)) {
                 if (!parentEl.classList.contains(SCRIPT_HIDDEN_CLASS)) {
                     parentEl.classList.add(SCRIPT_HIDDEN_CLASS);
@@ -381,24 +386,50 @@
             }
 
             const mainTextElement = item.querySelector('.truncate');
-            if (!mainTextElement || mainTextElement.textContent.trim() !== HIDE_PLANS_MAIN_TEXT) continue;
+            if (!mainTextElement) continue;
+
+            const mainTextContent = mainTextElement.textContent.trim();
+            const isViewPlansButton = mainTextContent === HIDE_PLANS_MAIN_TEXT;
+            const isUpgradePlanButton = mainTextContent === UPGRADE_PLAN_MAIN_TEXT;
+
+            if (!isViewPlansButton && !isUpgradePlanButton) continue;
+
             const minW0Container = item.querySelector('div.min-w-0');
             if (!minW0Container) continue;
+
             let subTextElement = null;
             const divsInMinW0 = minW0Container.querySelectorAll('div');
             for (const div of divsInMinW0) {
-                if (div !== mainTextElement && div !== mainTextElement.parentElement && div.textContent.includes(HIDE_PLANS_SUBTEXT_KEYWORD)) {
-                    subTextElement = div; break;
+                if (div === mainTextElement || div === mainTextElement.parentElement) continue; // Skip the main text div itself or its immediate parent
+
+                const subTextContent = div.textContent;
+                let subtextMatches = false;
+                if (isViewPlansButton && subTextContent.includes(HIDE_PLANS_SUBTEXT_KEYWORD)) {
+                    subtextMatches = true;
+                } else if (isUpgradePlanButton && subTextContent.includes(UPGRADE_PLAN_SUBTEXT_KEYWORD)) {
+                    subtextMatches = true;
+                }
+
+                if (subtextMatches) {
+                    subTextElement = div;
+                    break;
                 }
             }
+
             if (!subTextElement) continue;
+
+            // Check for an SVG icon, common to both buttons
             const svgIcon = item.querySelector('svg');
             if (!svgIcon) continue;
-            itemToHide = item; break;
+
+            itemToHide = item;
+            break; // Found the item
         }
+
 
         if (itemToHide) {
             const wrapperToHide = itemToHide.parentElement;
+            // Check if the wrapper seems like the correct one to hide (e.g., has the specific background class)
             if (wrapperToHide && wrapperToHide.tagName !== 'BODY' && wrapperToHide.contains(itemToHide) && wrapperToHide.classList.contains('bg-token-bg-elevated-secondary')) {
                  if (!wrapperToHide.classList.contains(SCRIPT_HIDDEN_CLASS)) {
                     debugLog('HidePlans - Wrapper identified. Hiding it with class:', wrapperToHide);
@@ -406,7 +437,7 @@
                 }
                 wrapperToHide.setAttribute(PLANS_BUTTON_WRAPPER_ATTR, 'true');
                 itemToHide.setAttribute(PLANS_BUTTON_ITEM_ATTR, 'true'); // Still set attr for consistency
-                if (!itemToHide.classList.contains(SCRIPT_HIDDEN_CLASS)) itemToHide.classList.add(SCRIPT_HIDDEN_CLASS);
+                if (!itemToHide.classList.contains(SCRIPT_HIDDEN_CLASS)) itemToHide.classList.add(SCRIPT_HIDDEN_CLASS); // Hide item itself too if wrapper logic somehow fails
 
             } else {
                 debugWarn('HidePlans - Wrapper not as expected. Hiding only inner item with class.', itemToHide, wrapperToHide);
@@ -419,6 +450,7 @@
             return false;
         }
     }
+
 
     function initializeHidePlansFeature() {
         if (hidePlansObserver) hidePlansObserver.disconnect(); hidePlansObserver = null;
@@ -1201,7 +1233,7 @@
         initializeHidePlansFeature();
         initializeTimelineFeatureWrapper();
         initializeThemeWatcher();
-        GM_registerMenuCommand('הגדרות כלי עזר וסרגל צד (v3.1.9)', openSettingsDialog);
+        GM_registerMenuCommand('הגדרות כלי עזר וסרגל צד', openSettingsDialog);
 
         document.addEventListener('visibilitychange', ()=>{
             const oldPageVisible = pageVisible;
@@ -1253,7 +1285,7 @@
                  debugLog("Some observers disconnected due to page hidden.");
             }
         });
-        debugLog('CombinedScript & Timeline Script v3.1.9 (Optimized) - Fully initialized.');
+        debugLog('CombinedScript & Timeline Script - Fully initialized.');
     }
 
     if (typeof $ === 'undefined' || typeof $.fn.jquery === 'undefined') {
