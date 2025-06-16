@@ -1,241 +1,418 @@
 // ==UserScript==
-// @name         AI-Studio Progress Sidebar (inside chat container) - MultiColumn
+// @name         כלי עזר משולבים ל-AI Studio
 // @namespace    https://example.com/
 // @version      0.9
-// @description  סרגל-התקדמות שמאלי ב-aistudio.google.com – מתפצל לעמודות, רק על אזור-הצ’אט, נקודות ברווח שווה, מתעלם מ-Thoughts.
+// @description  משלב שלושה פיצ'רים ל-aistudio.google.com: סרגל צד משופר (עם חלוקה שווה), תיקוני RTL, ועיצוב בועות. ניתן להפעיל/לבטל כל פיצ'ר בהגדרות.
+// @author       Y-PLONI
 // @match        https://aistudio.google.com/*
-// @grant        none
+// @grant        GM_addStyle
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_registerMenuCommand
 // @run-at       document-idle
+// @updateURL    https://github.com/Y-PLONI/AI-Studio-Enhancer/raw/refs/heads/main/AI-Studio-Enhancer.user.js
+// @downloadURL  https://github.com/Y-PLONI/AI-Studio-Enhancer/raw/refs/heads/main/AI-Studio-Enhancer.user.js
 // ==/UserScript==
 
 (() => {
   'use strict';
 
-  const SIDEBAR_COLUMN_CLASS = 'ais-progress-sidebar-column'; // ★ שונה: שם קלאס לעמודה
-  const DOT = 'ais-progress-dot';
-  const COLOR_USER = '#4CAF50';
-  const COLOR_MODEL = '#2196F3';
-  const INIT_DELAY = 2000;
-  const OBS_DELAY = 300;
-  const MAX_PER_COL = 30; // ★ חדש: מקסימום נקודות לעמודה
+  /*──────────────────────────────────
+    0. ניהול הגדרות ותפריט
+  ──────────────────────────────────*/
+  const DEFAULTS = { sidebar: true, rtl: true, bubbles: true };
+  const SETTINGS_KEY = 'aisEnhancerSettings';
+  const settings = Object.assign({}, DEFAULTS, GM_getValue(SETTINGS_KEY, {}));
 
-  let messages = [], active = -1, io = null, mo = null, chatRoot = null, inited = false;
-  let wrap = null; // ★ חדש: אלמנט העטיפה של העמודות (מחליף את sidebar כקונטיינר ראשי)
-
-  const debounce = (fn, t) => { let id; return (...a) => { clearTimeout(id); id = setTimeout(() => fn(...a), t); }; };
-
-  const $ = (tag, cls = '', attrs = {}) => {
-    const e = document.createElement(tag);
-    if (cls) e.className = cls;
-    Object.entries(attrs).forEach(([k, v]) => e.setAttribute(k, v));
-    return e;
-  };
-
-  /*──────  CSS  ──────*/
-  function css() {
-    if (document.getElementById('sidebar-css')) return;
-    const s = $('style', '', { id: 'sidebar-css' });
-    s.textContent = `
-      /* ★ חדש: מעטפת כל העמודות */
-      #ais-progress-wrap {
-        position: absolute; /* צמוד לקונטיינר-צ'אט */
-        pointer-events: none;
-        display: flex; /* שורה של עמודות */
-        gap: 18px; /* רווח ביניהן (כולל רווח לקו) */
-        opacity: 0;
-        transition: opacity .3s, left .3s;
-      }
-      #ais-progress-wrap.show { opacity: 1; }
-
-      /* ★ שונה: סגנון לעמודה בודדת (לשעבר #ais-progress-sidebar) */
-      .${SIDEBAR_COLUMN_CLASS} {
-        position: relative; /* חשוב עבור ה ::before */
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        /* justify-content ייקבע דינמית ב render */
-        pointer-events: none; /* הנקודות יקבלו pointer-events:auto */
-        height: 100%; /* ימלא את גובה ה-wrap */
-      }
-      .${SIDEBAR_COLUMN_CLASS}::before { /* הקו האנכי של העמודה */
-        content: '';
-        position: absolute;
-        left: 50%;
-        top: 0;
-        width: 4px;
-        height: 100%;
-        background: #B0B0B0;
-        border-radius: 2px;
-        transform: translateX(-50%);
-      }
-      .${DOT} {
-        width: 10px; height: 10px; border-radius: 50%; cursor: pointer; pointer-events: auto;
-        transition: transform .2s, box-shadow .2s; position: relative;
-        z-index: 1; /* מעל הקו ::before */
-      }
-      .${DOT}::after {
-        content: attr(data-num);
-        position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
-        font: 10px/1 sans-serif; color: #9e9e9e; pointer-events: none;
-      }
-      .${DOT}.first::after,
-      .${DOT}.last::after { color: #000; }
-      .${DOT}.user { background: ${COLOR_USER}; }
-      .${DOT}.model { background: ${COLOR_MODEL}; }
-      .${DOT}.active { transform: scale(1.35); box-shadow: 0 0 8px rgba(0,0,0,.4); }
-      .${DOT}:hover { transform: scale(1.25); }
-    `;
-    document.head.appendChild(s);
+  function saveAndReload() {
+    GM_setValue(SETTINGS_KEY, settings);
+    location.reload();
   }
 
-  /*── Sidebar (Wrap) Creation ──*/
-  // ★ שונה: הפונקציה יוצרת את ה-wrap במקום sidebar ישירות
-  function makeWrap() {
-    wrap = document.getElementById('ais-progress-wrap') || $('div', '', { id: 'ais-progress-wrap' });
-    // ודא שהוא עדיין לא קיים לפני הוספה
-    if (!document.getElementById('ais-progress-wrap')) {
-        document.body.appendChild(wrap);
-    }
+  // תפריט Violentmonkey
+  GM_registerMenuCommand('⚙️ הגדרות כלי עזר וסרגל צד', openSettings);
+
+  function openSettings() {
+    if (document.getElementById('ais-enhancer-settings')) return; // כבר פתוח
+
+    /* יצירת שכבת רקע */
+    const overlay = document.createElement('div');
+    overlay.id = 'ais-enhancer-settings';
+    overlay.style.cssText = `position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;`;
+
+    /* פאנל */
+    const panel = document.createElement('div');
+    panel.style.cssText = `background:#fff;color:#000;padding:18px 24px;border-radius:8px;min-width:260px;font:14px/1.4 sans-serif;direction:rtl;text-align:right;box-shadow:0 4px 14px rgba(0,0,0,.3);`;
+    overlay.appendChild(panel);
+
+    const title = document.createElement('h3');
+    title.textContent = 'הגדרות כלי עזר';
+    title.style.marginTop = '0';
+    panel.appendChild(title);
+
+    // צ׳קבוקסים
+    [
+      { key: 'sidebar', label: 'הצג סרגל צד משופר' },
+      { key: 'rtl',     label: 'תקן RTL' },
+      { key: 'bubbles', label: 'בועות צבע' },
+    ].forEach(({ key, label }) => {
+      const row = document.createElement('label');
+      Object.assign(row.style, { display: 'flex', alignItems: 'center', gap: '6px', margin: '6px 0' });
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = settings[key];
+      cb.addEventListener('change', () => { settings[key] = cb.checked; });
+
+      const span = document.createElement('span');
+      span.textContent = label;
+
+      row.append(cb, span);
+      panel.appendChild(row);
+    });
+
+    const saveBtn = document.createElement('button');
+    saveBtn.textContent = 'שמור והטען מחדש';
+    saveBtn.style.cssText = 'margin-top:12px;padding:6px 14px;border-radius:4px;cursor:pointer;border:1px solid #888;background:#f0f0f0;';
+    saveBtn.addEventListener('click', saveAndReload);
+    panel.appendChild(saveBtn);
+
+    overlay.addEventListener('click', (ev) => { if (ev.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
   }
 
-  /*── Helpers ──*/
-  const isThought = t => t.querySelector('ms-thought-chunk') || t.querySelector('.thought-panel');
+  /*──────────────────────────────────
+    1. סרגל‑צד משופר (עם חלוקה שווה)
+  ──────────────────────────────────*/
+  if (settings.sidebar) {
+    (() => {
+        'use strict';
 
-  /*── Scan ──*/
-  function scan() {
-    chatRoot = document.querySelector('ms-autoscroll-container') || document.querySelector('ms-chat-session');
-    const list = [];
-    document.querySelectorAll('ms-chat-turn').forEach(t => {
-      const box = t.querySelector('.chat-turn-container'); let role = 'unknown';
-      if (box?.classList.contains('user')) role = 'user';
-      if (box?.classList.contains('model')) role = 'model';
-      if (role === 'model' && isThought(t)) role = 'skip';
-      if (role === 'unknown') role = 'user'; // Default for safety
-      if (role !== 'skip') list.push({ turn: t, role });
-    });
-    const changed = list.length !== messages.length || list.some((m, i) => m.turn !== messages[i]?.turn);
-    if (changed) messages = list;
-    return changed;
-  }
+        const DEBUG = true;
+        const debugLog = DEBUG ? (...args) => console.log('[AI Studio Sidebar]', ...args) : () => {};
+        const debugWarn = DEBUG ? (...args) => console.warn('[AI Studio Sidebar]', ...args) : () => {};
 
-  /*──────  רינדור נקודות (★ הוחלפה כמעט כולה)  ──────*/
-  function render() {
-    if (!wrap) makeWrap(); // ודא שה-wrap קיים
-    wrap.replaceChildren(); // ניקוי כל העמודות הקודמות מה-wrap
-    if (!messages.length) {
-      wrap.classList.remove('show');
-      return;
-    }
+        const SIDEBAR_ID = 'ais-progress-sidebar';
+        const DOT_CLASS = 'ais-progress-dot';
+        const OBS_DEBOUNCE = 300;
+        const INIT_DELAY = 2000;
+        const COLOR_USER = '#4CAF50';
+        const COLOR_ASSIST = '#2196F3';
+        const MAX_DOTS_PER_SIDEBAR = 30; // סף הודעות לעבור לסרגל נוסף
+        const SIDEBAR_SPACING_PX = 6;
+        const SIDEBAR_VISUAL_WIDTH_PX = 30;
+        const TOP_OFFSET_PX = 140;
+        const INPUT_TOP_MARGIN_PX = 35;
 
-    /* חישוב מספר העמודות הדרוש */
-    const numCols = Math.ceil(messages.length / MAX_PER_COL);
-    const dotsPerColActually = Math.ceil(messages.length / numCols); // מספר נקודות מאוזן יותר לכל עמודה
+        let messages = [];
+        let currentMessageIndex = -1;
+        let chatContainer = null;
+        let sidebarContainer = null;
+        let intersectionObserver = null;
+        let mutationObserver = null;
+        let resizeObserver = null;
+        let inputResizeObserver = null;
+        let isInitialized = false;
 
-    /* בונה N עמודות */
-    const colArr = [...Array(numCols)].map(() => {
-      const col = $('div', SIDEBAR_COLUMN_CLASS); // ★ שימוש בקלאס החדש לעמודה
-      col.style.display = 'flex';
-      col.style.flexDirection = 'column';
-      col.style.alignItems = 'center'; // ★ הוספתי align-items:center שהיה ב-CSS המקורי
-      // col.style.justifyContent ייקבע בהמשך לכל עמודה
-      wrap.appendChild(col);
-      return col;
-    });
-
-    messages.forEach((m, i) => {
-      const clsExtra = i === 0 ? ' first' : (i === messages.length - 1 ? ' last' : '');
-      const d = $('div', `${DOT} ${m.role}${clsExtra}`, {
-        'data-i': i,
-        'data-num': i + 1
-      });
-      d.title = `הודעה ${i + 1} (${m.role === 'user' ? 'משתמש' : 'מודל'})`;
-      d.onclick = e => { e.stopPropagation(); scrollTo(i); };
-
-      const colIndex = Math.floor(i / dotsPerColActually); // פיזור מאוזן יותר
-      if (colArr[colIndex]) { // בדיקת בטיחות
-          colArr[colIndex].appendChild(d);
-      }
-    });
-
-    // קביעת justify-content לכל עמודה בנפרד
-    colArr.forEach(col => {
-        if (col.children.length > 1) {
-            col.style.justifyContent = 'space-between';
-        } else {
-            col.style.justifyContent = 'flex-start';
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => { clearTimeout(timeout); func(...args); };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
         }
-    });
 
-
-    wrap.classList.add('show');
-    place(); // מיקום ה-wrap כולו
-    resetIO();
-  }
-
-  /*──────  מיקום הסרגל (★ הוחלפה - מתייחסת ל-wrap)  ──────*/
-  function place() {
-    if (!chatRoot || !wrap) return; // בדיקה ששניהם קיימים
-    const r = chatRoot.getBoundingClientRect();
-    wrap.style.top = `${r.top + window.scrollY}px`;
-    wrap.style.height = `${r.height}px`;
-    wrap.style.left = `${r.left + 8}px`; // 8px פנימה מהקונטיינר
-  }
-
-  /*──────  גלילה  ──────*/
-  function scrollTo(i) {
-    const el = messages[i]?.turn;
-    if (!el) return;
-    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    window.scrollBy({ top: -12, left: 0, behavior: 'smooth' }); // פיצוי קטן לגובה הבר העליון
-    activate(i); // מדגיש מיד את הנקודה הנכונה
-  }
-
-  /*── Activate (★ שונה - עובד על wrap) ──*/
-  const activate = i => {
-    if (i === active || !wrap) return; active = i;
-    wrap.querySelectorAll('.' + DOT).forEach(d => d.classList.remove('active')); // חיפוש בתוך wrap
-    wrap.querySelector(`.${DOT}[data-i="${i}"]`)?.classList.add('active'); // חיפוש בתוך wrap
-  };
-
-  /*── IO ──*/
-  function resetIO() {
-    io?.disconnect(); if (!chatRoot) return;
-    io = new IntersectionObserver(es => {
-      let best = null, r = 0;
-      es.forEach(e => {
-        if (e.isIntersecting && e.intersectionRatio > r) {
-          best = e; r = e.intersectionRatio;
+        function createElement(tag, className = '', attributes = {}) {
+            const element = document.createElement(tag);
+            if (className) element.className = className;
+            Object.entries(attributes).forEach(([key, value]) => element.setAttribute(key, value));
+            return element;
         }
-      });
-      if (best) {
-        const i = messages.findIndex(m => m.turn === best.target);
-        if (i > -1) activate(i);
-      }
-    }, { root: chatRoot, rootMargin: '-50% 0% -50% 0%', threshold: .01 });
-    messages.forEach(m => io.observe(m.turn));
+
+        function isThinkingMessage(turn) {
+            return turn.querySelector('ms-thought-chunk') !== null || turn.querySelector('.thought-panel') !== null;
+        }
+
+        function isFileUploadMessage(turn) {
+            return turn.querySelector('ms-user-file-upload') !== null;
+        }
+
+        function getInputAreaInfo() {
+            const inputArea = document.querySelector('ms-user-input, textarea, input[type="text"], input[type="file"]');
+            if (inputArea) {
+                const rect = inputArea.getBoundingClientRect();
+                return { top: rect.top, height: rect.height };
+            }
+            return { top: window.innerHeight - 90, height: 50 };
+        }
+
+        function injectStyles() {
+            if (document.getElementById('ai-studio-sidebar-styles')) return;
+            const style = createElement('style', '', { id: 'ai-studio-sidebar-styles' });
+            style.textContent = `
+                #${SIDEBAR_ID} {
+                    position: absolute !important; top: ${TOP_OFFSET_PX}px !important; z-index: 10000 !important; display: flex !important; flex-direction: row !important; align-items: stretch !important; pointer-events: none !important; transition: left 0.3s ease-out, width 0.3s ease-out, bottom 0.3s ease-out, opacity 0.3s ease-out, transform 0.3s ease-out !important; opacity: 0 !important;
+                }
+                #${SIDEBAR_ID}.visible { opacity: 1 !important; }
+                #${SIDEBAR_ID} .ais-sidebar-instance {
+                    display: flex !important; flex-direction: column !important; width: ${SIDEBAR_VISUAL_WIDTH_PX}px !important; margin-right: ${SIDEBAR_SPACING_PX}px !important; position: relative !important; height: 100% !important;
+                }
+                #${SIDEBAR_ID} .ais-sidebar-instance::before {
+                    content: ''; position: absolute; left: 50%; top: 0; width: 4px; height: 100%; background: #B0B0B0; border-radius: 2px; transform: translateX(-50%); z-index: -1;
+                }
+                #${SIDEBAR_ID} .${DOT_CLASS} {
+                    width: 10px !important; height: 10px !important; border-radius: 50% !important; cursor: pointer !important; pointer-events: all !important; transition: transform 0.2s, box-shadow 0.2s !important; position: absolute !important; z-index: 1 !important; left: 50% !important; transform: translateX(-50%) !important;
+                }
+                #${SIDEBAR_ID} .${DOT_CLASS}.user { background-color: ${COLOR_USER} !important; }
+                #${SIDEBAR_ID} .${DOT_CLASS}.model { background-color: ${COLOR_ASSIST} !important; }
+                #${SIDEBAR_ID} .${DOT_CLASS}.active { transform: translateX(-50%) scale(1.4) !important; box-shadow: 0 0 10px rgba(0,0,0,0.4) !important; }
+                #${SIDEBAR_ID} .${DOT_CLASS}:hover { transform: translateX(-50%) scale(1.3) !important; }
+                #${SIDEBAR_ID} .${DOT_CLASS} span {
+                    position: absolute !important; left: 14px !important; top: 50% !important; transform: translateY(-50%) !important; font-size: 11px !important; color: #333 !important; background-color: rgba(255, 255, 255, 0.75) !important; padding: 1px 3px !important; border-radius: 2px !important; pointer-events: none !important;
+                }
+                #${SIDEBAR_ID}.shrunk .ais-sidebar-instance { transform: scale(0.8) !important; opacity: 0.7 !important; }
+                #${SIDEBAR_ID}.extra-shrunk .ais-sidebar-instance { transform: scale(0.6) !important; opacity: 0.5 !important; }
+            `;
+            document.head.appendChild(style);
+        }
+
+        function createSidebar() {
+            if (document.getElementById(SIDEBAR_ID)) return document.getElementById(SIDEBAR_ID);
+            sidebarContainer = createElement('div', '', { id: SIDEBAR_ID });
+            const mainElement = document.querySelector('main') || document.body;
+            mainElement.appendChild(sidebarContainer);
+            return sidebarContainer;
+        }
+
+        function findChatElements() {
+            chatContainer = document.querySelector('ms-autoscroll-container') || document.querySelector('ms-chat-session');
+            const messageElements = Array.from(document.querySelectorAll('ms-chat-turn'));
+            if (messageElements.length === 0) {
+                if (messages.length > 0) { messages = []; return true; }
+                return false;
+            }
+
+            const filteredElements = messageElements.filter(el => !isThinkingMessage(el) && !isFileUploadMessage(el));
+            const newMessages = filteredElements.map((element, index) => {
+                let role = 'unknown';
+                const turnContainerDiv = element.querySelector('div.chat-turn-container');
+                if (turnContainerDiv) role = turnContainerDiv.classList.contains('user') ? 'user' : 'model';
+                if (role === 'unknown') role = index % 2 === 0 ? 'user' : 'model';
+                return { element, role, index, id: element.id || `sidebar-msg-${Date.now()}-${index}` };
+            });
+
+            if (newMessages.length !== messages.length || newMessages.some((msg, i) => !messages[i] || messages[i].element !== msg.element)) {
+                messages = newMessages;
+                return true;
+            }
+            return false;
+        }
+
+        function renderDots() {
+            if (!sidebarContainer) return;
+            while (sidebarContainer.firstChild) sidebarContainer.removeChild(sidebarContainer.firstChild);
+            if (messages.length === 0) {
+                sidebarContainer.classList.remove('visible');
+                return;
+            }
+
+            // --- לוגיקה חדשה לחלוקה שווה ---
+            const numSidebars = Math.ceil(messages.length / MAX_DOTS_PER_SIDEBAR);
+            const dotsPerSidebarActual = Math.ceil(messages.length / numSidebars);
+            // --- סוף הלוגיקה החדשה ---
+
+            for (let s = 0; s < numSidebars; s++) {
+                const sidebarInstance = createElement('div', 'ais-sidebar-instance', { id: `${SIDEBAR_ID}-${s}` });
+
+                // --- שימוש בחישוב השווה החדש במקום בקבוע ---
+                const startIndex = s * dotsPerSidebarActual;
+                const endIndex = Math.min(startIndex + dotsPerSidebarActual, messages.length);
+                // --- סוף השינוי ---
+
+                const numMessagesInSidebar = endIndex - startIndex;
+
+                for (let i = startIndex; i < endIndex; i++) {
+                    const messageData = messages[i];
+                    const localIndex = i - startIndex;
+
+                    const dot = createElement('div', `${DOT_CLASS} ${messageData.role}`, {
+                        'data-message-index': i.toString(),
+                        title: `הודעה ${i + 1} (${messageData.role === 'user' ? 'משתמש' : 'מודל'})`
+                    });
+
+                    const numberSpan = document.createElement('span');
+                    numberSpan.textContent = (i + 1).toString();
+                    dot.appendChild(numberSpan);
+
+                    dot.addEventListener('click', (e) => { e.stopPropagation(); scrollToMessage(i); });
+
+                    let topPercentage = (numMessagesInSidebar <= 1) ? 50 : 1 + (localIndex / (numMessagesInSidebar - 1)) * 98;
+                    dot.style.top = `${topPercentage}%`;
+
+                    sidebarInstance.appendChild(dot);
+                }
+                sidebarContainer.appendChild(sidebarInstance);
+            }
+
+            updateSidebarPosition();
+            sidebarContainer.classList.add('visible');
+            if (intersectionObserver) intersectionObserver.disconnect();
+            setupIntersectionObserver();
+        }
+
+        function updateSidebarPosition() {
+            if (!sidebarContainer) return;
+            const referenceElement = document.querySelector('ms-chat-turn') || (messages.length > 0 ? messages[0].element : null);
+            const numSidebars = sidebarContainer.children.length;
+            const inputAreaInfo = getInputAreaInfo();
+            const inputTop = inputAreaInfo.top;
+            const inputHeight = inputAreaInfo.height;
+
+            if (referenceElement) {
+                const rect = referenceElement.getBoundingClientRect();
+                const baseLeft = Math.max(rect.left - 20 - (numSidebars * (SIDEBAR_VISUAL_WIDTH_PX + SIDEBAR_SPACING_PX)), 8);
+                sidebarContainer.style.left = `${baseLeft}px`;
+                sidebarContainer.style.width = `${numSidebars * (SIDEBAR_VISUAL_WIDTH_PX + SIDEBAR_SPACING_PX)}px`;
+            } else {
+                sidebarContainer.style.left = '12px';
+                sidebarContainer.style.width = `${numSidebars * (SIDEBAR_VISUAL_WIDTH_PX + SIDEBAR_SPACING_PX)}px`;
+            }
+
+            sidebarContainer.style.bottom = `${window.innerHeight - inputTop + INPUT_TOP_MARGIN_PX}px`;
+            sidebarContainer.classList.toggle('shrunk', inputHeight > 100 && inputHeight <= 200);
+            sidebarContainer.classList.toggle('extra-shrunk', inputHeight > 200);
+        }
+
+        function scrollToMessage(index) {
+            if (index < 0 || index >= messages.length) return;
+            messages[index]?.element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            updateActiveMessage(index);
+        }
+
+        function updateActiveMessage(index) {
+            if (!sidebarContainer || currentMessageIndex === index) return;
+            currentMessageIndex = index;
+            sidebarContainer.querySelectorAll(`.${DOT_CLASS}`).forEach(dot => dot.classList.remove('active'));
+            if (index >= 0) {
+                const activeDot = sidebarContainer.querySelector(`.${DOT_CLASS}[data-message-index="${index}"]`);
+                if (activeDot) activeDot.classList.add('active');
+            }
+        }
+
+        function setupIntersectionObserver() {
+            if (intersectionObserver) intersectionObserver.disconnect();
+            if (!chatContainer || messages.length === 0) {
+                updateActiveMessage(-1);
+                return;
+            }
+            intersectionObserver = new IntersectionObserver((entries) => {
+                let mostCenteredEntry = null;
+                let highestVisibility = 0;
+                entries.forEach(entry => {
+                    if (entry.isIntersecting && entry.intersectionRatio > highestVisibility) {
+                        highestVisibility = entry.intersectionRatio;
+                        mostCenteredEntry = entry;
+                    }
+                });
+                if (mostCenteredEntry) {
+                    const messageIndex = messages.findIndex(msg => msg.element === mostCenteredEntry.target);
+                    if (messageIndex !== -1) updateActiveMessage(messageIndex);
+                }
+            }, { root: chatContainer, rootMargin: '-40% 0px -40% 0px', threshold: 0.01 });
+            messages.forEach(msg => { if (msg.element) intersectionObserver.observe(msg.element); });
+        }
+
+        const debouncedRebuild = debounce(() => {
+            if (findChatElements()) renderDots();
+            updateSidebarPosition();
+        }, OBS_DEBOUNCE);
+
+        function setupMutationObserver() {
+            if (mutationObserver) return;
+            const target = document.querySelector('ms-chat-session') || document.body;
+            mutationObserver = new MutationObserver(debouncedRebuild);
+            mutationObserver.observe(target, { childList: true, subtree: true });
+        }
+
+        function setupResizeObserver() {
+            if (resizeObserver) return;
+            const debouncedResize = debounce(() => {
+                updateSidebarPosition();
+                if (chatContainer) setupIntersectionObserver();
+            }, 200);
+            resizeObserver = new ResizeObserver(debouncedResize);
+            resizeObserver.observe(document.body);
+            window.addEventListener('resize', debouncedResize);
+        }
+
+        function setupInputResizeObserver() {
+            if (inputResizeObserver) return;
+            const inputArea = document.querySelector('ms-user-input, textarea, input[type="text"], input[type="file"]');
+            if (!inputArea) {
+                setTimeout(setupInputResizeObserver, 1000);
+                return;
+            }
+            inputResizeObserver = new ResizeObserver(debounce(updateSidebarPosition, 100));
+            inputResizeObserver.observe(inputArea);
+        }
+
+        function initialize() {
+            if (isInitialized) return;
+            isInitialized = true;
+            injectStyles();
+            sidebarContainer = createSidebar();
+            if (findChatElements()) renderDots();
+            updateSidebarPosition();
+            setupMutationObserver();
+            setupResizeObserver();
+            setupInputResizeObserver();
+            debugLog('Sidebar initialization complete.');
+        }
+
+        setTimeout(initialize, INIT_DELAY);
+
+    })();
   }
 
-  /*── Mutation ──*/
-  const refresh = debounce(() => { if (scan()) render(); else place(); }, OBS_DELAY);
-  function watch() {
-    const tgt = document.querySelector('ms-chat-session') || document.body;
-    mo?.disconnect(); mo = new MutationObserver(refresh);
-    mo.observe(tgt, { childList: true, subtree: true });
+  /*──────────────────────────────────
+    2. RTL Fixes
+  ──────────────────────────────────*/
+  if (settings.rtl) {
+    (function () {
+      'use strict';
+      const fixStyle = `
+      .chat-turn-container.render, .chat-turn-container.render *{direction:rtl !important;text-align:right !important;}
+      .chat-turn-container.render p, .chat-turn-container.render span, .chat-turn-container.render div{unicode-bidi:isolate !important;}
+      .prose .text-token-streaming{direction:rtl !important;text-align:right !important;}
+      button[class*="grounding"]{direction:rtl !important;text-align:right !important;unicode-bidi:plaintext !important;}
+      button[class*="grounding"] svg{float:left !important;margin-left:0 !important;margin-right:8px !important;}
+      .chat-turn-container.render pre, .chat-turn-container.render pre *, .chat-turn-container.render code, .chat-turn-container.render div[class*="code"], .chat-turn-container.render div[class*="code"] *{direction:ltr !important;text-align:left !important;unicode-bidi:plaintext !important;}`;
+      (typeof GM_addStyle==='function')?GM_addStyle(fixStyle):(()=>{const s=document.createElement('style');s.textContent=fixStyle;document.head.appendChild(s);})();
+    })();
   }
 
-  /*── Init ──*/
-  function init() {
-    if (inited) return; inited = true;
-    css();
-    makeWrap(); // ★ שונה: יוצר את ה-wrap
-    if (scan()) render(); else place();
-    watch();
-    window.addEventListener('resize', debounce(place, 200));
-    window.addEventListener('scroll', debounce(place, 200));
+  /*──────────────────────────────────
+    3. בועות צבע
+  ──────────────────────────────────*/
+  if (settings.bubbles) {
+    (() => {
+      'use strict';
+      const css = `
+        :root{--cgpt-user-bubble-bg:#F4FFF7;--cgpt-user-bubble-bg-rgb:244,255,247;--cgpt-user-bubble-text:inherit;--cgpt-user-stripe:#A5D6A7;--cgpt-ai-bubble-bg:#E3F2FD;--cgpt-ai-bubble-bg-rgb:227,242,253;--cgpt-ai-bubble-text:inherit;--cgpt-ai-border:#BBDEFB;--cgpt-ai-stripe:#64B5F6}
+        @media (prefers-color-scheme:dark){:root{--cgpt-user-bubble-bg:#3A3F47;--cgpt-user-bubble-bg-rgb-dark:58,63,71;--cgpt-user-bubble-text:#E0E0E0;--cgpt-user-stripe:#508D50;--cgpt-ai-bubble-bg:#2C3035;--cgpt-ai-bubble-bg-rgb-dark:44,48,53;--cgpt-ai-bubble-text:#E0E0E0;--cgpt-ai-border:#454A50;--cgpt-ai-stripe:#4A7ABE}}
+        .chat-turn-container.render{box-sizing:border-box !important;max-width:100% !important;overflow-wrap:anywhere;margin:8px 0;border-radius:10px;padding:14px 18px !important;position:relative !important;}
+        .chat-turn-container.render.user{background:var(--cgpt-user-bubble-bg) !important;color:var(--cgpt-user-bubble-text) !important;box-shadow:inset -4px 0 0 0 var(--cgpt-user-stripe)}
+        .chat-turn-container.render.user *{background-color:transparent !important;}
+        .chat-turn-container.render:not(.user){background:var(--cgpt-ai-bubble-bg) !important;color:var(--cgpt-ai-bubble-text) !important;border:1px solid var(--cgpt-ai-border) !important;box-shadow:inset 4px 0 0 0 var(--cgpt-ai-stripe)}
+        html,body{overflow-x:hidden !important;}
+        .chat-turn-container.render .actions.hover-or-edit{position:absolute !important;right:8px !important;top:-28px !important;padding:2px 6px !important;border-radius:6px !important;z-index:20 !important;box-shadow:0 1px 4px rgba(0,0,0,.25) !important;backdrop-filter:saturate(180%) blur(4px) !important;}
+        .chat-turn-container.render.user .actions.hover-or-edit{background:rgba(var(--cgpt-user-bubble-bg-rgb),0.85) !important;}
+        .chat-turn-container.render:not(.user) .actions.hover-or-edit{background:rgba(var(--cgpt-ai-bubble-bg-rgb),0.85) !important;}
+        @media (prefers-color-scheme:dark){.chat-turn-container.render .actions.hover-or-edit{box-shadow:0 1px 4px rgba(0,0,0,.6) !important;}.chat-turn-container.render.user .actions.hover-or-edit{background:rgba(var(--cgpt-user-bubble-bg-rgb-dark),0.8) !important;}.chat-turn-container.render:not(.user) .actions.hover-or-edit{background:rgba(var(--cgpt-ai-bubble-bg-rgb-dark),0.8) !important;}}
+      `;
+      (typeof GM_addStyle==='function')?GM_addStyle(css):(()=>{const s=document.createElement('style');s.textContent=css;document.head.appendChild(s);})();
+    })();
   }
 
-  /*── Start ──*/
-  document.readyState === 'loading'
-    ? document.addEventListener('DOMContentLoaded', () => setTimeout(init, INIT_DELAY))
-    : setTimeout(init, INIT_DELAY);
 })();
