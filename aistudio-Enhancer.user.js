@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         כלי עזר משולבים ל-AI Studio
 // @namespace    https://example.com/
-// @version      0.9
+// @version      1.0
 // @description  משלב שלושה פיצ'רים ל-aistudio.google.com: סרגל צד משופר (עם חלוקה שווה), תיקוני RTL, ועיצוב בועות. ניתן להפעיל/לבטל כל פיצ'ר בהגדרות.
 // @author       Y-PLONI
 // @match        https://aistudio.google.com/*
