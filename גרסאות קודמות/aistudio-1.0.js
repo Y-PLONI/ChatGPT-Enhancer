@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         AI Studio – Enhancer & Auto-Tools
+// @name         כלי עזר משולבים ל-AI Studio
 // @namespace    https://example.com/
-// @version      1.5.0
-// @description  סרגל-צד משופר, תיקוני RTL, בועות צבע, והפעלה אוטומטית של Code execution ו-Grounding בכל “שיחה חדשה”.
+// @version      1.0
+// @description  משלב שלושה פיצ'רים ל-aistudio.google.com: סרגל צד משופר (עם חלוקה שווה), תיקוני RTL, ועיצוב בועות. ניתן להפעיל/לבטל כל פיצ'ר בהגדרות.
 // @author       Y-PLONI
 // @match        https://aistudio.google.com/*
 // @grant        GM_addStyle
@@ -20,47 +20,44 @@
   /*──────────────────────────────────
     0. ניהול הגדרות ותפריט
   ──────────────────────────────────*/
-  const DEFAULTS = {
-    sidebar: true,
-    rtl:      true,
-    bubbles:  true,
-    codeExecution: true,
-    grounding:     true,
-  };
+  const DEFAULTS = { sidebar: true, rtl: true, bubbles: true };
   const SETTINGS_KEY = 'aisEnhancerSettings';
   const settings = Object.assign({}, DEFAULTS, GM_getValue(SETTINGS_KEY, {}));
 
-  function saveAndReload() { GM_setValue(SETTINGS_KEY, settings); location.reload(); }
+  function saveAndReload() {
+    GM_setValue(SETTINGS_KEY, settings);
+    location.reload();
+  }
 
   // תפריט Violentmonkey
-  GM_registerMenuCommand('⚙️ הגדרות כלי עזר וסרגל צד', openSettings);
+  GM_registerMenuCommand('⚙️ הגדרות כלי עזר וסרגל צד', openSettings);
 
   function openSettings() {
     if (document.getElementById('ais-enhancer-settings')) return; // כבר פתוח
 
-    /* שכבת רקע */
+    /* יצירת שכבת רקע */
     const overlay = document.createElement('div');
     overlay.id = 'ais-enhancer-settings';
-    overlay.style.cssText = `position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,0.4);
-                             display:flex;align-items:center;justify-content:center;`;
-    document.body.appendChild(overlay);
+    overlay.style.cssText = `position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;`;
 
-    /* פאנל */
+    /* פאנל */
     const panel = document.createElement('div');
-    panel.style.cssText =
-      `background:#fff;color:#000;padding:18px 24px;border-radius:8px;min-width:260px;
-       font:14px/1.4 sans-serif;direction:rtl;text-align:right;box-shadow:0 4px 14px rgba(0,0,0,.3);`;
+    panel.style.cssText = `background:#fff;color:#000;padding:18px 24px;border-radius:8px;min-width:260px;font:14px/1.4 sans-serif;direction:rtl;text-align:right;box-shadow:0 4px 14px rgba(0,0,0,.3);`;
     overlay.appendChild(panel);
 
     const title = document.createElement('h3');
-    title.textContent = 'הגדרות כלי עזר';
+    title.textContent = 'הגדרות כלי עזר';
     title.style.marginTop = '0';
     panel.appendChild(title);
 
-    /* כלי UI נפוצים */
-    const addCheckbox = (key, label) => {
+    // צ׳קבוקסים
+    [
+      { key: 'sidebar', label: 'הצג סרגל צד משופר' },
+      { key: 'rtl',     label: 'תקן RTL' },
+      { key: 'bubbles', label: 'בועות צבע' },
+    ].forEach(({ key, label }) => {
       const row = document.createElement('label');
-      Object.assign(row.style, { display:'flex',alignItems:'center',gap:'6px',margin:'6px 0' });
+      Object.assign(row.style, { display: 'flex', alignItems: 'center', gap: '6px', margin: '6px 0' });
 
       const cb = document.createElement('input');
       cb.type = 'checkbox';
@@ -72,35 +69,20 @@
 
       row.append(cb, span);
       panel.appendChild(row);
-    };
+    });
 
-    /* קבוצה 1: ממשק */
-    addCheckbox('sidebar', 'הצג סרגל צד משופר');
-    addCheckbox('rtl',     'תקן RTL');
-    addCheckbox('bubbles', 'בועות צבע');
-
-    /* קבוצה 2: “בשיחה חדשה” */
-    const groupTitle = document.createElement('h4');
-    groupTitle.textContent = 'בשיחה חדשה';
-    groupTitle.style.margin = '12px 0 4px';
-    panel.appendChild(groupTitle);
-
-    addCheckbox('codeExecution', 'הפעל את Code execution');
-    addCheckbox('grounding',     'הפעל את Grounding with Google Search');
-
-    /* כפתור שמירה */
     const saveBtn = document.createElement('button');
     saveBtn.textContent = 'שמור והטען מחדש';
-    saveBtn.style.cssText = 'margin-top:12px;padding:6px 14px;border-radius:4px;cursor:pointer;' +
-                            'border:1px solid #888;background:#f0f0f0;';
+    saveBtn.style.cssText = 'margin-top:12px;padding:6px 14px;border-radius:4px;cursor:pointer;border:1px solid #888;background:#f0f0f0;';
     saveBtn.addEventListener('click', saveAndReload);
     panel.appendChild(saveBtn);
 
-    overlay.addEventListener('click', ev => { if (ev.target === overlay) overlay.remove(); });
+    overlay.addEventListener('click', (ev) => { if (ev.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
   }
 
   /*──────────────────────────────────
-    1. סרגל-צד משופר (עם חלוקה שווה)
+    1. סרגל‑צד משופר (עם חלוקה שווה)
   ──────────────────────────────────*/
   if (settings.sidebar) {
     (() => {
@@ -217,7 +199,7 @@
                 const turnContainerDiv = element.querySelector('div.chat-turn-container');
                 if (turnContainerDiv) role = turnContainerDiv.classList.contains('user') ? 'user' : 'model';
                 if (role === 'unknown') role = index % 2 === 0 ? 'user' : 'model';
-                return { element, role, index, id: `sidebar-msg-${Date.now()}-${index}` };
+                return { element, role, index, id: element.id || `sidebar-msg-${Date.now()}-${index}` };
             });
 
             if (newMessages.length !== messages.length || newMessages.some((msg, i) => !messages[i] || messages[i].element !== msg.element)) {
@@ -235,13 +217,19 @@
                 return;
             }
 
+            // --- לוגיקה חדשה לחלוקה שווה ---
             const numSidebars = Math.ceil(messages.length / MAX_DOTS_PER_SIDEBAR);
             const dotsPerSidebarActual = Math.ceil(messages.length / numSidebars);
+            // --- סוף הלוגיקה החדשה ---
 
             for (let s = 0; s < numSidebars; s++) {
                 const sidebarInstance = createElement('div', 'ais-sidebar-instance', { id: `${SIDEBAR_ID}-${s}` });
+
+                // --- שימוש בחישוב השווה החדש במקום בקבוע ---
                 const startIndex = s * dotsPerSidebarActual;
                 const endIndex = Math.min(startIndex + dotsPerSidebarActual, messages.length);
+                // --- סוף השינוי ---
+
                 const numMessagesInSidebar = endIndex - startIndex;
 
                 for (let i = startIndex; i < endIndex; i++) {
@@ -388,7 +376,7 @@
   }
 
   /*──────────────────────────────────
-    2. RTL Fixes
+    2. RTL Fixes
   ──────────────────────────────────*/
   if (settings.rtl) {
     (function () {
@@ -426,41 +414,5 @@
       (typeof GM_addStyle==='function')?GM_addStyle(css):(()=>{const s=document.createElement('style');s.textContent=css;document.head.appendChild(s);})();
     })();
   }
-
-  /*──────────────────────────────────
-    4. הפעלת כלים אוטומטית ב־“שיחה חדשה”
-  ──────────────────────────────────*/
-  (() => {
-    const TOOLS_MAP = {
-      codeExecution: 'Code execution',
-      grounding:     'Grounding with Google Search',
-    };
-
-    const activeTools = [];
-    if (settings.codeExecution) activeTools.push(TOOLS_MAP.codeExecution);
-    if (settings.grounding)     activeTools.push(TOOLS_MAP.grounding);
-    if (activeTools.length === 0) return; // אין מה לעשות
-
-    function ensureSwitchesAreOn() {
-      // פעל רק במסך “New Chat”
-      if (!window.location.pathname.endsWith('/new_chat')) return;
-
-      activeTools.forEach(label => {
-        const btn = document.querySelector(`button[role="switch"][aria-label="${label}"]`);
-        if (!btn) return;                                   // המתג עדיין לא בדף
-        if (btn.getAttribute('aria-checked') !== 'true') {  // אם כבוי – הפעל
-          console.log('[AI Studio] מפעיל מתג חסר:', label);
-          btn.click();
-        }
-      });
-    }
-
-    console.log('[AI Studio] מאזין ל-DOM כדי להבטיח שהכלים הרצויים דלוקים.');
-    const observer = new MutationObserver(ensureSwitchesAreOn);
-    observer.observe(document.body, { childList:true, subtree:true });
-
-    // ריצה ראשונית
-    ensureSwitchesAreOn();
-  })();
 
 })();
