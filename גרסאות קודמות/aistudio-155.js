@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         AI Studio – משופר
+// @name         AI Studio – משפר
 // @namespace    https://example.com/
-// @version      1.5.6
-// @description  פותח היסטוריה אוטומטית, סרגל-צד משופר, תיקוני RTL, בועות צבע, הפעלה אוטומטית של כלים ב”שיחה חדשה”, ושמירה אוטומטית של השיחה.
+// @version      1.5.5
+// @description  פותח היסטוריה אוטומטית, סרגל-צד משופר, תיקוני RTL, בועות צבע, והפעלה אוטומטית של כלים ב“שיחה חדשה” – הכל בתסריט יחיד.
 // @author       Y-PLONI
 // @match        https://aistudio.google.com/*
 // @grant        GM_addStyle
@@ -21,13 +21,12 @@
     0. ניהול הגדרות ותפריט
   ──────────────────────────────────*/
   const DEFAULTS = {
-    openHistoryOnLoad: true,
+    openHistoryOnLoad: true, // [חדש] פתיחת היסטוריה בטעינה
     sidebar: true,
     rtl:      true,
     bubbles:  true,
     codeExecution: true,
     grounding:     true,
-    autoSave: true,
   };
   const SETTINGS_KEY = 'aisEnhancerSettings';
   const settings = Object.assign({}, DEFAULTS, GM_getValue(SETTINGS_KEY, {}));
@@ -77,11 +76,11 @@
     };
 
     /* קבוצה 1: ממשק */
-    addCheckbox('openHistoryOnLoad', 'פתח היסטוריה בהפעלה ראשונה');
-    addCheckbox('sidebar',          'הצג סרגל צד משופר');
-    addCheckbox('rtl',              'תקן RTL');
-    addCheckbox('bubbles',          'בועות צבע');
-    addCheckbox('autoSave',         'שמירה אוטומטית כל 5 שניות');
+    addCheckbox('openHistoryOnLoad', 'פתח היסטוריה בהפעלה ראשונה'); // [חדש] צ'קבוקס הגדרה
+    addCheckbox('sidebar', 'הצג סרגל צד משופר');
+    addCheckbox('rtl',     'תקן RTL');
+    addCheckbox('bubbles', 'בועות צבע');
+
 
     /* קבוצה 2: “בשיחה חדשה” */
     const groupTitle = document.createElement('h4');
@@ -403,8 +402,7 @@
       .prose .text-token-streaming{direction:rtl !important;text-align:right !important;}
       button[class*="grounding"]{direction:rtl !important;text-align:right !important;unicode-bidi:plaintext !important;}
       button[class*="grounding"] svg{float:left !important;margin-left:0 !important;margin-right:8px !important;}
-      .chat-turn-container.render pre, .chat-turn-container.render pre *, .chat-turn-container.render code, .chat-turn-container.render div[class*="code"], .chat-turn-container.render div[class*="code"] *{direction:ltr !important;text-align:left !important;unicode-bidi:plaintext !important;};
-      `;
+      .chat-turn-container.render pre, .chat-turn-container.render pre *, .chat-turn-container.render code, .chat-turn-container.render div[class*="code"], .chat-turn-container.render div[class*="code"] *{direction:ltr !important;text-align:left !important;unicode-bidi:plaintext !important;}`;
       (typeof GM_addStyle==='function')?GM_addStyle(fixStyle):(()=>{const s=document.createElement('style');s.textContent=fixStyle;document.head.appendChild(s);})();
     })();
   }
@@ -470,12 +468,20 @@
 
 
   /*──────────────────────────────────
-    5. פתיחת היסטוריה בטעינה ראשונה
+    5. [חדש] פתיחת היסטוריה בטעינה ראשונה
   ──────────────────────────────────*/
   if (settings.openHistoryOnLoad) {
     (() => {
         'use strict';
 
+        /***
+         * מחכה להופעת כפתור הקיפול/הרחבה בדום.
+         * ברגע שמוצאים אותו – בודקים אם ההיסטוריה מוסתרת
+         * (כלומר: למחלקת   <span class="expand-icon">   חסרה המילה 'expand').
+         * אם אכן מוסתרת – מבצעים .click() על הכפתור.
+         * מיד לאחר מכן מנתקים את ה-observer כדי שלא יפעל שוב
+         * עד לריענון / טעינה מחדש של הדף.
+         ***/
         const observer = new MutationObserver(() => {
             const icon = document.querySelector('span.expand-icon');
             if (!icon) return;                          // הכפתור טרם נטען
@@ -491,37 +497,10 @@
             observer.disconnect();                      // פועל רק פעם אחת
         });
 
+        // מאזינים לכל שינויי-דום כדי לתפוס את הכפתור ברגע שהוא נוצר
         observer.observe(document, { childList: true, subtree: true });
     })();
   }
 
-  /*──────────────────────────────────
-    6. שמירה אוטומטית (Auto-Save)
-  ──────────────────────────────────*/
-  if (settings.autoSave) {
-    (() => {
-      const SAVE_INTERVAL_MS = 5000; // 5 שניות
-
-      function triggerSaveButton() {
-        // עצור אם חלון-קופץ פתוח (למשל חלונית שיתוף)
-        const overlayDiv = document.querySelector('.mat-mdc-dialog-container');
-        if (overlayDiv) {
-          console.log('[AI Studio] Overlay active – auto-save paused');
-          return;
-        }
-
-        const saveButton = document.querySelector('button[aria-label="Save prompt"]');
-        if (saveButton) {
-          saveButton.click();
-          console.log('[AI Studio] Save button clicked');
-        } else {
-          console.log('[AI Studio] Save button not found');
-        }
-      }
-
-      // מתזמן שמירה מחזורית
-      setInterval(triggerSaveButton, SAVE_INTERVAL_MS);
-    })();
-  }
 
 })();
