@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         AI Studio – משפר
+// @name         AI Studio – Enhancer & Auto-Tools
 // @namespace    https://example.com/
-// @version      1.5.5
-// @description  פותח היסטוריה אוטומטית, סרגל-צד משופר, תיקוני RTL, בועות צבע, והפעלה אוטומטית של כלים ב“שיחה חדשה” – הכל בתסריט יחיד.
+// @version      1.5.0
+// @description  סרגל-צד משופר, תיקוני RTL, בועות צבע, והפעלה אוטומטית של Code execution ו-Grounding בכל “שיחה חדשה”.
 // @author       Y-PLONI
 // @match        https://aistudio.google.com/*
 // @grant        GM_addStyle
@@ -21,7 +21,6 @@
     0. ניהול הגדרות ותפריט
   ──────────────────────────────────*/
   const DEFAULTS = {
-    openHistoryOnLoad: true, // [חדש] פתיחת היסטוריה בטעינה
     sidebar: true,
     rtl:      true,
     bubbles:  true,
@@ -49,7 +48,7 @@
     /* פאנל */
     const panel = document.createElement('div');
     panel.style.cssText =
-      `background:#fff;color:#000;padding:18px 24px;border-radius:8px;min-width:300px;
+      `background:#fff;color:#000;padding:18px 24px;border-radius:8px;min-width:260px;
        font:14px/1.4 sans-serif;direction:rtl;text-align:right;box-shadow:0 4px 14px rgba(0,0,0,.3);`;
     overlay.appendChild(panel);
 
@@ -76,11 +75,9 @@
     };
 
     /* קבוצה 1: ממשק */
-    addCheckbox('openHistoryOnLoad', 'פתח היסטוריה בהפעלה ראשונה'); // [חדש] צ'קבוקס הגדרה
     addCheckbox('sidebar', 'הצג סרגל צד משופר');
     addCheckbox('rtl',     'תקן RTL');
     addCheckbox('bubbles', 'בועות צבע');
-
 
     /* קבוצה 2: “בשיחה חדשה” */
     const groupTitle = document.createElement('h4');
@@ -465,42 +462,5 @@
     // ריצה ראשונית
     ensureSwitchesAreOn();
   })();
-
-
-  /*──────────────────────────────────
-    5. [חדש] פתיחת היסטוריה בטעינה ראשונה
-  ──────────────────────────────────*/
-  if (settings.openHistoryOnLoad) {
-    (() => {
-        'use strict';
-
-        /***
-         * מחכה להופעת כפתור הקיפול/הרחבה בדום.
-         * ברגע שמוצאים אותו – בודקים אם ההיסטוריה מוסתרת
-         * (כלומר: למחלקת   <span class="expand-icon">   חסרה המילה 'expand').
-         * אם אכן מוסתרת – מבצעים .click() על הכפתור.
-         * מיד לאחר מכן מנתקים את ה-observer כדי שלא יפעל שוב
-         * עד לריענון / טעינה מחדש של הדף.
-         ***/
-        const observer = new MutationObserver(() => {
-            const icon = document.querySelector('span.expand-icon');
-            if (!icon) return;                          // הכפתור טרם נטען
-
-            if (!icon.classList.contains('expand')) {   // ההיסטוריה מוסתרת
-                const btn = icon.closest('button');
-                if (btn) {
-                    console.log('[AI Studio] פותח את חלונית ההיסטוריה.');
-                    btn.click();
-                }
-            }
-
-            observer.disconnect();                      // פועל רק פעם אחת
-        });
-
-        // מאזינים לכל שינויי-דום כדי לתפוס את הכפתור ברגע שהוא נוצר
-        observer.observe(document, { childList: true, subtree: true });
-    })();
-  }
-
 
 })();
